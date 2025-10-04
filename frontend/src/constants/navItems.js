@@ -3,7 +3,7 @@ import { MdAccessTimeFilled } from "react-icons/md";
 
 export const navItems = [
   {
-    path: "/portfolio",
+    path: "/",
     label: "My Portfolio",
     icon: FaPiggyBank,
   },
