@@ -31,7 +31,6 @@ const INITIAL_TOAST_STATE = {
 };
 
 // AUTOCOMPLETE component
-// Replace the StockAutocomplete component with this:
 const StockAutocomplete = ({
   selectedStock,
   stockOptions,
@@ -169,29 +168,39 @@ const AddStockDialog = ({ open, onClose, onAdd }) => {
     setLoading(true);
 
     try {
-      // fetch price
-      const stockData = await fetchStockPrice(formData.symbol);
-      // update data
+      // try to fetch current price
+      let currentPrice = null;
+      let priceWarning = "";
+
+      try {
+        const stockData = await fetchStockPrice(formData.symbol);
+        currentPrice = stockData.currentPrice;
+      } catch (error) {
+        // if price fetch fails, allow manual entry without current price
+        priceWarning = " (real-time data unavailable)";
+        console.warn(`Could not fetch price for ${formData.symbol}:`, error);
+      }
+
+      // add stock
       onAdd({
         symbol: formData.symbol.toUpperCase(),
         name: formData.name,
         shares: parseFloat(formData.shares),
         buyPrice: parseFloat(formData.buyPrice),
-        currentPrice: stockData.currentPrice,
+        currentPrice: currentPrice,
       });
 
-      // show success
-      showToast(
-        `${formData.symbol.toUpperCase()} has been added to your portfolio at $${
-          stockData.currentPrice
-        }`,
-        "success"
-      );
+      // show success message
+      const successMessage = currentPrice
+        ? `${formData.symbol.toUpperCase()} has been added to your portfolio at $${currentPrice}`
+        : `${formData.symbol.toUpperCase()} has been added to your portfolio${priceWarning}`;
+
+      showToast(successMessage, "success");
 
       resetForm();
       onClose();
     } catch (error) {
-      showToast(`Failed to fetch stock price: ${error.message}`, "error");
+      showToast(`Failed to add stock: ${error.message}`, "error");
     } finally {
       setLoading(false);
     }
