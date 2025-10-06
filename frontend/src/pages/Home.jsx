@@ -12,6 +12,8 @@ import {
   calculateTotalPL,
   calculateTotalReturn,
 } from "../utils/mathHelpers";
+import CustomButton from "../components/CustomButton";
+
 const Home = () => {
   const [portfolio, setPortfolio] = useState([]);
   const [showRecommendations, setShowRecommendations] = useState(false);
@@ -101,19 +103,19 @@ const Home = () => {
 
         {/* Action Buttons */}
         <Box sx={styles.buttonsContainer}>
-          <Button
+          <CustomButton
             onClick={() => setShowAddStock(true)}
             sx={[styles.button, { bgcolor: "#305D9E" }]}
           >
             Add Stock
-          </Button>
-          <Button
+          </CustomButton>
+          <CustomButton
             onClick={() => setShowRecommendations(true)}
             disabled={portfolio.length === 0}
             sx={[styles.button, styles.reccoButton]}
           >
             Get Recommendations
-          </Button>
+          </CustomButton>
         </Box>
 
         {/* Stats Section */}
@@ -205,7 +207,6 @@ const styles = {
     color: "white",
     px: 3,
     py: 1.5,
-    "&:hover": { bgcolor: "#254a7d" },
   },
   reccoButton: {
     bgcolor: "#2E8B8B",

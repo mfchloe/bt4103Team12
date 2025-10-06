@@ -1,5 +1,7 @@
 
 fastapi
+
+pandas
+pydantic
 uvicorn
 yfinance
-pydantic
