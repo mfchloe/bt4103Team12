@@ -14,6 +14,7 @@ import {
   Autocomplete,
 } from "@mui/material";
 import FormTextField from "../FormTextField";
+import CustomButton from "../CustomButton";
 
 const API_BASE_URL = "http://localhost:8000/api/yfinance";
 
@@ -287,15 +288,15 @@ const AddStockDialog = ({ open, onClose, onAdd }) => {
         </DialogContent>
 
         <DialogActions sx={styles.dialogActions}>
-          <Button
+          <CustomButton
             onClick={handleDialogClose}
             variant="outlined"
             sx={styles.cancelButton}
             disabled={loading}
           >
             Cancel
-          </Button>
-          <Button
+          </CustomButton>
+          <CustomButton
             type="submit"
             form="addStockForm"
             variant="contained"
@@ -306,7 +307,7 @@ const AddStockDialog = ({ open, onClose, onAdd }) => {
             }
           >
             {loading ? "Adding..." : "Add Stock"}
-          </Button>
+          </CustomButton>
         </DialogActions>
       </Dialog>
 
