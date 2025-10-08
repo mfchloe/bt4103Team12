@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from controllers import yfinance_controller
+from controllers import far_controller
 import logging
 import uvicorn
 
@@ -28,6 +29,7 @@ app.add_middleware(
 # ROUTERS HERE
 # include routers
 app.include_router(yfinance_controller.router)
+app.include_router(far_controller.router)
 
 @app.get("/")
 async def root():

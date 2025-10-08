@@ -5,3 +5,4 @@ pandas
 pydantic
 uvicorn
 yfinance
+pyarrow
