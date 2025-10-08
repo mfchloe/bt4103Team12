@@ -1,24 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  Box,
-  Typography,
-  Grid2 as Grid,
-  Card,
-  CardContent,
-  Chip,
-  Divider,
-  Button,
-  ToggleButton,
-  ToggleButtonGroup,
-  TextField,
-  Slider,
-  FormGroup,
-  FormControlLabel,
-  Checkbox,
-  Select,
-  MenuItem,
-  InputLabel,
-} from "@mui/material";
+import { Box, Typography, Card, CardContent, Chip, Divider, Button, ToggleButton, ToggleButtonGroup, TextField, Slider, FormGroup, FormControlLabel, Checkbox, Select, MenuItem, InputLabel, Grid } from "@mui/material";
 import { PieChart, Pie, Tooltip, Cell, ResponsiveContainer } from "recharts";
 import StatCard from "../components/StatCard";
 import { MdGroups, MdInsights, MdAttachMoney, MdTrendingUp } from "react-icons/md";
@@ -303,13 +284,13 @@ const FARDashboard = () => {
   const { data: metrics } = useApi("/api/far/metrics", body);
   const { data: topAssets } = useApi("/api/far/top-assets", { ...body, top_n: 15 });
   const { data: sectorPrefs } = useApi("/api/far/sector-prefs", body);
+  const { data: investorBreakdown } = useApi("/api/far/investor-type-breakdown", body);
   const { data: activitySeries } = useApi("/api/far/activity-series", { ...body, interval: "month" });
   const { data: explain } = useApi(selectedAsset ? "/api/far/explain" : null, { ...body, asset: selectedAsset });
 
   const investorTypeData = useMemo(() => {
-    const cohort = filters.investor_type?.length ? filters.investor_type : ["Buy-and-Hold", "Moderate Trader", "Active Trader"];
-    return cohort.map((label) => ({ label, value: 1 })); // placeholder until backend supports this breakdown directly
-  }, [filters.investor_type]);
+    return investorBreakdown?.rows || [];
+  }, [investorBreakdown]);
 
   const resetFilters = () => {
     setFilters({
@@ -332,44 +313,44 @@ const FARDashboard = () => {
 
       {/* KPIs */}
       <Grid container spacing={2} sx={{ mb: 2 }}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid item xs={12} sm={6} md={3}>
           <StatCard title="Customers" value={metrics?.customers ?? "-"} icon={MdGroups} />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid item xs={12} sm={6} md={3}>
           <StatCard title="Avg Portfolio" value={metrics?.avg_portfolio_value ? `€${Math.round(metrics.avg_portfolio_value).toLocaleString()}` : "-"} icon={MdAttachMoney} />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid item xs={12} sm={6} md={3}>
           <StatCard title="Median Holding Days" value={metrics?.median_holding_days ?? "-"} icon={MdInsights} />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid item xs={12} sm={6} md={3}>
           <StatCard title="Avg Tx/Month" value={metrics?.avg_transactions_per_month ?? "-"} icon={MdTrendingUp} />
         </Grid>
       </Grid>
 
       <Grid container spacing={2}>
         {/* Sidebar */}
-        <Grid size={{ xs: 12, md: 3 }}>
+        <Grid item xs={12} md={3}>
           <FilterSidebar filters={filters} setFilters={setFilters} onReset={resetFilters} />
         </Grid>
 
         {/* Main content */}
-        <Grid size={{ xs: 12, md: 9 }}>
+        <Grid item xs={12} md={9}>
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 4 }}>
+            <Grid item xs={12} md={4}>
               <InvestorTypeDonut
                 data={investorTypeData}
                 onSelect={(name) => setFilters((f) => ({ ...f, investor_type: [name] }))}
               />
             </Grid>
-            <Grid size={{ xs: 12, md: 8 }}>
+            <Grid item xs={12} md={8}>
               <ActivitySeriesChart rows={activitySeries?.rows} />
             </Grid>
 
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <TopAssetsTable rows={topAssets?.rows || []} onSelectAsset={setSelectedAsset} />
             </Grid>
 
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <WhyPanel asset={selectedAsset} data={explain} />
             </Grid>
           </Grid>
