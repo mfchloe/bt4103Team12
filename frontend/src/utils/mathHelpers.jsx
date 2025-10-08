@@ -18,6 +18,39 @@ export const calculateStockStats = (stock) => {
   return { totalValue, pl, returnPercent, isPositive };
 };
 
+export const calculateSharpeRatio = (portfolio) => {
+  if (!portfolio || portfolio.length === 0) return 0;
+
+  const totalValue = portfolio.reduce(
+    (sum, stock) => sum + stock.currentPrice * stock.shares,
+    0
+  );
+
+  // weighted returns
+  const weightedReturns = portfolio.map((stock) => {
+    const weight = (stock.currentPrice * stock.shares) / totalValue;
+    const dailyReturn = (stock.currentPrice - stock.buyPrice) / stock.buyPrice;
+    return dailyReturn * weight;
+  });
+
+  // portfolio expected return
+  const portfolioReturn = weightedReturns.reduce((a, b) => a + b, 0);
+
+  // portfolio volatility (std dev)
+  const mean = portfolioReturn;
+  const variance =
+    weightedReturns.reduce((sum, r) => sum + (r - mean) ** 2, 0) /
+    weightedReturns.length;
+  const volatility = Math.sqrt(variance);
+
+  if (volatility === 0) return 0;
+
+  const riskFreeRate = 0; // for simplicity
+  const sharpeRatio = (portfolioReturn - riskFreeRate) / volatility;
+
+  return sharpeRatio;
+};
+
 export const formatCurrency = (value) => {
   if (value === null || value === undefined) {
     return "N/A";

@@ -1,6 +1,6 @@
 import React from "react";
 import { Card, CardContent, Box, Typography, Chip } from "@mui/material";
-
+import { formatPercentage } from "../utils/mathHelpers";
 const StatCard = ({ title, value, icon: Icon, trend }) => (
   <Card elevation={0} sx={styles.statCard}>
     <CardContent sx={{ p: 3 }}>
@@ -21,7 +21,7 @@ const StatCard = ({ title, value, icon: Icon, trend }) => (
         {/* trend */}
         {trend !== undefined && (
           <Chip
-            label={`${trend > 0 ? "+" : ""}${trend}%`}
+            label={formatPercentage(trend, trend >= 0)}
             size="small"
             sx={styles.trendChip(trend)}
           />
@@ -71,7 +71,7 @@ const styles = {
   },
   statValue: {
     fontWeight: "bold",
-    fontSize: "1.8rem",
+    fontSize: "1.5rem",
     color: "#111827",
   },
   trendChip: (trend) => ({
