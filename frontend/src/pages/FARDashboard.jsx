@@ -369,7 +369,11 @@ const FARDashboard = () => {
               />
             </Grid>
             <Grid item xs={12} md={8}>
-              <ActivitySeriesChart rows={activitySeries?.rows} />
+              <HistogramCard title="Trading Activity Distribution" bins={activityHist?.bins} />
+            </Grid>
+
+            <Grid item xs={12}>
+              <CategoryBarCard title="Sector Preference" rows={sectorPrefs?.rows} />
             </Grid>
 
             <Grid item xs={12}>
