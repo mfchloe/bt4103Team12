@@ -8,7 +8,12 @@ from typing import Dict, Optional
 
 import pandas as pd
 
-DATASETS_DIR = os.path.join(os.getcwd(), "datasets")
+# Resolve datasets directory robustly (supports both backend/datasets and repo_root/datasets)
+BACKEND_ROOT = os.path.dirname(os.path.dirname(__file__))
+DATASET_DIRS = [
+    os.path.join(BACKEND_ROOT, "datasets"),
+    os.path.join(os.getcwd(), "datasets"),
+]
 
 
 @dataclass
@@ -18,13 +23,14 @@ class DatasetPaths:
 
 
 def _detect_file(prefix: str) -> Optional[str]:
-    # prefers parquet over csv if both exist
-    parquet_path = os.path.join(DATASETS_DIR, f"{prefix}.parquet")
-    csv_path = os.path.join(DATASETS_DIR, f"{prefix}.csv")
-    if os.path.exists(parquet_path):
-        return parquet_path
-    if os.path.exists(csv_path):
-        return csv_path
+    # prefers parquet over csv if both exist; search multiple candidate dirs
+    for base in DATASET_DIRS:
+        parquet_path = os.path.join(base, f"{prefix}.parquet")
+        csv_path = os.path.join(base, f"{prefix}.csv")
+        if os.path.exists(parquet_path):
+            return parquet_path
+        if os.path.exists(csv_path):
+            return csv_path
     return None
 
 
@@ -69,6 +75,18 @@ def load_dataframes() -> Dict[str, pd.DataFrame]:
                 break
         dfs["transactions"] = df
     return dfs
+
+
+def reset_cache() -> None:
+    """Clear cached dataset detection and loaded dataframes."""
+    try:
+        detect_datasets.cache_clear()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    try:
+        load_dataframes.cache_clear()  # type: ignore[attr-defined]
+    except Exception:
+        pass
 
 
 def _parse_capacity_to_value(capacity_str: Optional[str]) -> Optional[float]:
@@ -313,8 +331,27 @@ def get_sector_prefs(filters: dict) -> dict:
 def get_activity_series(filters: dict, interval: str = "month") -> dict:
     dfs = load_dataframes()
     tx = dfs.get("transactions")
+    # If no transactions, fall back to customer timestamps
     if tx is None or tx.empty:
-        return {"rows": []}
+        cust = dfs.get("customers")
+        if cust is None or cust.empty:
+            return {"rows": []}
+        cust_f = _apply_filters(cust, filters)
+        c_date_col = None
+        for c in ["timestamp", "lastQuestionnaireDate"]:
+            if c in cust_f.columns:
+                c_date_col = c
+                break
+        if not c_date_col:
+            return {"rows": []}
+        rule = {"day": "D", "week": "W", "month": "M", "quarter": "Q", "year": "Y"}.get(interval, "M")
+        series = cust_f.set_index(c_date_col).sort_index().groupby(pd.Grouper(freq=rule)).size()
+        rows = [
+            {"period": idx.strftime("%Y-%m"), "buy_volume": int(v), "unique_buyers": int(v)}
+            for idx, v in series.items()
+        ]
+        return {"rows": rows}
+
     tx_f = _apply_filters(tx, filters)
     date_col = None
     for c in ["date", "txn_date", "transaction_date", "timestamp"]:
@@ -322,36 +359,22 @@ def get_activity_series(filters: dict, interval: str = "month") -> dict:
             date_col = c
             break
     if date_col is None:
-        # Fallback: if customers have a timestamp, aggregate customers over time
-        cust = dfs.get("customers")
-        if cust is not None and not cust.empty:
-            cust_f = _apply_filters(cust, filters)
-            c_date_col = None
-            for c in ["timestamp", "lastQuestionnaireDate"]:
-                if c in cust_f.columns:
-                    c_date_col = c
-                    break
-            if c_date_col:
-                rule = {"day": "D", "week": "W", "month": "M", "quarter": "Q", "year": "Y"}.get(interval, "M")
-                series = (
-                    cust_f.set_index(c_date_col).sort_index().groupby(pd.Grouper(freq=rule)).size()
-                )
-                rows = [
-                    {"period": idx.strftime("%Y-%m"), "buy_volume": int(v), "unique_buyers": int(v)}
-                    for idx, v in series.items()
-                ]
-                return {"rows": rows}
         return {"rows": []}
 
     rule = {"day": "D", "week": "W", "month": "M", "quarter": "Q", "year": "Y"}.get(interval, "M")
     grouped = tx_f.set_index(date_col).sort_index().groupby(pd.Grouper(freq=rule))
-    series = grouped.agg(buy_volume=("asset", "count"))
+    # Count rows if 'asset' column missing
+    size_series = grouped.size().rename("buy_volume")
+    series = size_series.to_frame()
     if "customer_id" in tx_f.columns:
         series["unique_buyers"] = grouped["customer_id"].nunique()
     else:
         series["unique_buyers"] = series["buy_volume"]
 
-    rows = [{"period": idx.strftime("%Y-%m"), "buy_volume": int(r.buy_volume), "unique_buyers": int(r.unique_buyers)} for idx, r in series.iterrows()]
+    rows = [
+        {"period": idx.strftime("%Y-%m"), "buy_volume": int(r.buy_volume), "unique_buyers": int(r.unique_buyers)}
+        for idx, r in series.iterrows()
+    ]
     return {"rows": rows}
 
 
