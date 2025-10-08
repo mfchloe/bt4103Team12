@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import Dict, Optional
 
 import pandas as pd
+import numpy as np
 
 # Resolve datasets directory robustly (supports both backend/datasets and repo_root/datasets)
 BACKEND_ROOT = os.path.dirname(os.path.dirname(__file__))
@@ -40,6 +41,8 @@ def detect_datasets() -> DatasetPaths:
     customers = (
         _detect_file("customer_information_with_engineered_df")
         or _detect_file("customer_information_with_engineered")
+        or _detect_file("customers_information_with_engineered")
+        or _detect_file("customers_information_with_engineered_df")
         or _detect_file("customer_engineering_with_engineered")
     )
     # accommodate typo or correct spelling for assets/transactions
@@ -127,16 +130,19 @@ def _apply_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
         if values:
             present_col = next((c for c in candidates if c in out.columns), None)
             if present_col:
-                out = out[out[present_col].isin(values)]
+                values_l = set(str(v).lower() for v in values)
+                col_l = out[present_col].astype(str).str.lower()
+                out = out[col_l.isin(values_l)]
     # sectors: works with transactions.sector OR customers.preferred_sector/current_dominant_sector
     sectors = (filters or {}).get("sectors")
     if sectors:
+        sectors_l = set(str(v).lower() for v in sectors)
         if "sector" in out.columns:
-            out = out[out["sector"].isin(sectors)]
+            out = out[out["sector"].astype(str).str.lower().isin(sectors_l)]
         elif "preferred_sector" in out.columns:
-            out = out[out["preferred_sector"].isin(sectors)]
+            out = out[out["preferred_sector"].astype(str).str.lower().isin(sectors_l)]
         elif "current_dominant_sector" in out.columns:
-            out = out[out["current_dominant_sector"].isin(sectors)]
+            out = out[out["current_dominant_sector"].astype(str).str.lower().isin(sectors_l)]
     # numeric
     capacity = (filters or {}).get("investment_capacity")
     if capacity:
@@ -474,7 +480,7 @@ def get_histogram(filters: dict, column: str, bins: int = 20) -> dict:
     series = pd.to_numeric(cust_f[column], errors="coerce").dropna()
     if series.empty:
         return {"bins": []}
-    counts, edges = pd.np.histogram(series.values, bins=bins)  # type: ignore[attr-defined]
+    counts, edges = np.histogram(series.values, bins=bins)
     bins_out = []
     for i in range(len(counts)):
         bins_out.append({
