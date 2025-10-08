@@ -7,6 +7,7 @@ import numbers
 from models.far_model import (
     ActivitySeriesRequest,
     ExplainRequest,
+    HistogramRequest,
     MetricsRequest,
     ScatterSampleRequest,
     SectorPrefsRequest,
@@ -89,3 +90,20 @@ def investor_type_breakdown(req: MetricsRequest):
     counts = cust_f["investor_type"].value_counts()
     rows = [{"label": k, "value": int(v)} for k, v in counts.items()]
     return _clean({"rows": rows})
+
+
+@router.post("/histogram")
+def histogram(req: HistogramRequest):
+    return _clean(far_service.get_histogram(req.filters.model_dump(exclude_none=True), req.column, req.bins))
+
+
+@router.post("/category-breakdown")
+def category_breakdown(req: MetricsRequest):
+    # Reuse MetricsRequest to keep frontend simple? Define separate model already; use it here.
+    from models.far_model import CategoryBreakdownRequest  # local import to avoid circular
+    if isinstance(req, CategoryBreakdownRequest):
+        body = req
+    else:
+        # fallback if called with wrong model
+        return {"rows": []}
+    return _clean(far_service.get_category_breakdown(body.filters.model_dump(exclude_none=True), body.column, body.top_n))

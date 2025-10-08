@@ -463,3 +463,34 @@ def explain_asset(filters: dict, asset: str) -> dict:
         "notes": None,
     }
     return result
+
+
+def get_histogram(filters: dict, column: str, bins: int = 20) -> dict:
+    dfs = load_dataframes()
+    cust = dfs.get("customers")
+    if cust is None or cust.empty or column not in cust.columns:
+        return {"bins": []}
+    cust_f = _apply_filters(cust, filters)
+    series = pd.to_numeric(cust_f[column], errors="coerce").dropna()
+    if series.empty:
+        return {"bins": []}
+    counts, edges = pd.np.histogram(series.values, bins=bins)  # type: ignore[attr-defined]
+    bins_out = []
+    for i in range(len(counts)):
+        bins_out.append({
+            "bin_start": float(edges[i]),
+            "bin_end": float(edges[i+1]),
+            "count": int(counts[i]),
+        })
+    return {"bins": bins_out}
+
+
+def get_category_breakdown(filters: dict, column: str, top_n: int = 20) -> dict:
+    dfs = load_dataframes()
+    cust = dfs.get("customers")
+    if cust is None or cust.empty or column not in cust.columns:
+        return {"rows": []}
+    cust_f = _apply_filters(cust, filters)
+    counts = cust_f[column].dropna().astype(str).value_counts().head(top_n)
+    rows = [{"label": k, "value": int(v)} for k, v in counts.items()]
+    return {"rows": rows}
