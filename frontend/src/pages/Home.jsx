@@ -8,58 +8,14 @@ import AddStockDialog from "../components/home/AddStockDialog";
 import PortfolioChart from "../components/home/PortfolioChart";
 import {
   calculateTotalValue,
+  calculateTotalCost,
   calculateTotalPL,
   calculateTotalReturn,
-  calculateSharpeRatio,
 } from "../utils/mathHelpers";
 import CustomButton from "../components/CustomButton";
-import ChartsSection from "../components/home/ChartsSection";
-import StatsSection from "../components/home/StatsSection";
-const PLACEHOLDER_PORTFOLIO = [
-  {
-    id: 1,
-    symbol: "AAPL",
-    name: "Apple Inc.",
-    shares: 10,
-    buyPrice: 150.0,
-    currentPrice: 180.25,
-  },
-  {
-    id: 2,
-    symbol: "GOOGL",
-    name: "Alphabet Inc.",
-    shares: 5,
-    buyPrice: 2500.0,
-    currentPrice: 2800.5,
-  },
-  {
-    id: 3,
-    symbol: "TSLA",
-    name: "Tesla Inc.",
-    shares: 8,
-    buyPrice: 600.0,
-    currentPrice: 700.0,
-  },
-  {
-    id: 4,
-    symbol: "AMZN",
-    name: "Amazon.com Inc.",
-    shares: 3,
-    buyPrice: 3100.0,
-    currentPrice: 3300.0,
-  },
-  {
-    id: 5,
-    symbol: "MSFT",
-    name: "Microsoft Corp.",
-    shares: 12,
-    buyPrice: 280.0,
-    currentPrice: 310.0,
-  },
-];
 
 const Home = () => {
-  const [portfolio, setPortfolio] = useState(PLACEHOLDER_PORTFOLIO);
+  const [portfolio, setPortfolio] = useState([]);
   const [showRecommendations, setShowRecommendations] = useState(false);
   const [showAddStock, setShowAddStock] = useState(false);
 
@@ -116,7 +72,6 @@ const Home = () => {
   // const totalCost = calculateTotalCost(portfolio);
   const totalPL = calculateTotalPL(portfolio);
   const totalReturn = calculateTotalReturn(portfolio);
-  const sharpeRatio = calculateSharpeRatio(portfolio);
 
   // portfolio table's CRUD operations
   const handleAddStock = (stock) => {
@@ -165,15 +120,51 @@ const Home = () => {
 
         {/* Stats Section */}
 
-        <StatsSection
-          totalValue={totalValue}
-          totalPL={totalPL}
-          totalReturn={totalReturn}
-          sharpeRatio={sharpeRatio}
-        />
+        {/* Stat Cards */}
+        <Grid container spacing={3} mb={6}>
+          <Grid item xs={12} md={4}>
+            <StatCard
+              title="Total Portfolio Value"
+              value={`$${totalValue.toFixed(2)}`}
+              icon={DollarSign}
+              trend={totalReturn}
+            />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <StatCard
+              title="Today's P&L"
+              value={
+                totalPL >= 0
+                  ? `+$${totalPL.toFixed(2)}`
+                  : `-$${Math.abs(totalPL).toFixed(2)}`
+              }
+              icon={TrendingUp}
+              trend={totalPL >= 0 ? 2.1 : -2.1}
+            />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <StatCard
+              title="Total Return"
+              value={`${totalReturn >= 0 ? "+" : ""}${totalReturn.toFixed(2)}%`}
+              icon={BarChart3}
+              trend={totalReturn}
+            />
+          </Grid>
+        </Grid>
 
         {/* charts section */}
-        <ChartsSection portfolio={portfolio} />
+        <Box
+          sx={{ bgcolor: "white", borderRadius: 3, p: 3, mb: 6, boxShadow: 1 }}
+        >
+          {/* piechart */}
+          {portfolio.length > 0 ? (
+            <PortfolioChart portfolio={portfolio} />
+          ) : (
+            <Typography sx={styles.chartPreviewText}>
+              Add stocks to your portfolio to see charts
+            </Typography>
+          )}
+        </Box>
 
         {/* dialogs */}
         <AddStockDialog
