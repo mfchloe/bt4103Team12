@@ -52,3 +52,16 @@ def scatter_sample(req: ScatterSampleRequest):
 @router.post("/explain")
 def explain(req: ExplainRequest):
     return far_service.explain_asset(req.filters.model_dump(exclude_none=True), req.asset)
+
+
+@router.post("/investor-type-breakdown")
+def investor_type_breakdown(req: MetricsRequest):
+    # Simple breakdown from customers if available
+    dfs = far_service.load_dataframes()
+    cust = dfs.get("customers")
+    if cust is None or cust.empty or "investor_type" not in cust.columns:
+        return {"rows": []}
+    cust_f = far_service._apply_filters(cust, req.filters.model_dump(exclude_none=True))  # type: ignore
+    counts = cust_f["investor_type"].value_counts()
+    rows = [{"label": k, "value": int(v)} for k, v in counts.items()]
+    return {"rows": rows}
