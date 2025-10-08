@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from controllers import yfinance_controller
+from controllers import far_controller
 import logging
 import uvicorn
 
@@ -20,6 +21,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:5173"],   # react devs (vite is 5173)
+    allow_origin_regex=r"https?://localhost(:\d+)?",  # allow any localhost port during dev
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,6 +30,7 @@ app.add_middleware(
 # ROUTERS HERE
 # include routers
 app.include_router(yfinance_controller.router)
+app.include_router(far_controller.router)
 
 @app.get("/")
 async def root():
