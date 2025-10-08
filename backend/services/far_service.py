@@ -344,7 +344,7 @@ def get_activity_series(filters: dict, interval: str = "month") -> dict:
                 break
         if not c_date_col:
             return {"rows": []}
-        rule = {"day": "D", "week": "W", "month": "M", "quarter": "Q", "year": "Y"}.get(interval, "M")
+        rule = {"day": "D", "week": "W", "month": "MS", "quarter": "QS", "year": "YS"}.get(interval, "MS")
         series = cust_f.set_index(c_date_col).sort_index().groupby(pd.Grouper(freq=rule)).size()
         rows = [
             {"period": idx.strftime("%Y-%m"), "buy_volume": int(v), "unique_buyers": int(v)}
@@ -361,7 +361,14 @@ def get_activity_series(filters: dict, interval: str = "month") -> dict:
     if date_col is None:
         return {"rows": []}
 
-    rule = {"day": "D", "week": "W", "month": "M", "quarter": "Q", "year": "Y"}.get(interval, "M")
+    # Ensure datetime index for resampling
+    tx_f = tx_f.copy()
+    tx_f[date_col] = pd.to_datetime(tx_f[date_col], errors="coerce")
+    tx_f = tx_f.dropna(subset=[date_col])
+    if tx_f.empty:
+        return {"rows": []}
+
+    rule = {"day": "D", "week": "W", "month": "MS", "quarter": "QS", "year": "YS"}.get(interval, "MS")
     grouped = tx_f.set_index(date_col).sort_index().groupby(pd.Grouper(freq=rule))
     # Count rows if 'asset' column missing
     size_series = grouped.size().rename("buy_volume")
