@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Box, Typography, Card, CardContent, Chip, Divider, Button, ToggleButton, ToggleButtonGroup, TextField, Slider, FormGroup, FormControlLabel, Checkbox, Select, MenuItem, InputLabel, Grid } from "@mui/material";
-import { PieChart, Pie, Tooltip, Cell, ResponsiveContainer } from "recharts";
+import { PieChart, Pie, Tooltip, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import StatCard from "../components/StatCard";
 import { MdGroups, MdInsights, MdAttachMoney, MdTrendingUp } from "react-icons/md";
 
@@ -198,20 +198,46 @@ const InvestorTypeDonut = ({ data, onSelect }) => {
   );
 };
 
-const ActivitySeriesChart = ({ rows }) => {
-  const data = (rows || []).map((r) => ({ name: r.period, value: r.buy_volume }));
+const HistogramCard = ({ title, bins }) => {
+  const data = (bins || []).map((b) => ({
+    name: `${Math.round(b.bin_start)}-${Math.round(b.bin_end)}`,
+    count: b.count,
+  }));
   return (
     <Card>
       <CardContent>
-        <Typography sx={{ fontWeight: 700, mb: 1 }}>Activity Over Time</Typography>
+        <Typography sx={{ fontWeight: 700, mb: 1 }}>{title}</Typography>
         <Box sx={{ height: 220 }}>
           <ResponsiveContainer>
-            {/* Use a simple area chart via recharts Line (avoid extra deps) */}
-            <PieChart>
-              {/* lightweight stand-in; replace with LineChart if desired */}
-              <Pie dataKey="value" data={data} outerRadius={0} />
+            <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" hide />
+              <YAxis allowDecimals={false} />
               <Tooltip />
-            </PieChart>
+              <Bar dataKey="count" fill="#305D9E" />
+            </BarChart>
+          </ResponsiveContainer>
+        </Box>
+      </CardContent>
+    </Card>
+  );
+};
+
+const CategoryBarCard = ({ title, rows }) => {
+  const data = (rows || []).map((r) => ({ name: r.label, value: r.value }));
+  return (
+    <Card>
+      <CardContent>
+        <Typography sx={{ fontWeight: 700, mb: 1 }}>{title}</Typography>
+        <Box sx={{ height: 220 }}>
+          <ResponsiveContainer>
+            <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 60 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" angle={-30} textAnchor="end" interval={0} height={60} />
+              <YAxis allowDecimals={false} />
+              <Tooltip />
+              <Bar dataKey="value" fill="#54A6FF" />
+            </BarChart>
           </ResponsiveContainer>
         </Box>
       </CardContent>
@@ -283,9 +309,9 @@ const FARDashboard = () => {
 
   const { data: metrics } = useApi("/api/far/metrics", body);
   const { data: topAssets } = useApi("/api/far/top-assets", { ...body, top_n: 15 });
-  const { data: sectorPrefs } = useApi("/api/far/sector-prefs", body);
+  const { data: sectorPrefs } = useApi("/api/far/category-breakdown", { ...body, column: "preferred_sector", top_n: 15 });
   const { data: investorBreakdown } = useApi("/api/far/investor-type-breakdown", body);
-  const { data: activitySeries } = useApi("/api/far/activity-series", { ...body, interval: "month" });
+  const { data: activityHist } = useApi("/api/far/histogram", { ...body, column: "trading_activity_ratio", bins: 30 });
   const { data: explain } = useApi(selectedAsset ? "/api/far/explain" : null, { ...body, asset: selectedAsset });
 
   const investorTypeData = useMemo(() => {

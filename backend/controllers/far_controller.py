@@ -8,6 +8,7 @@ from models.far_model import (
     ActivitySeriesRequest,
     ExplainRequest,
     HistogramRequest,
+    CategoryBreakdownRequest,
     MetricsRequest,
     ScatterSampleRequest,
     SectorPrefsRequest,
@@ -98,12 +99,9 @@ def histogram(req: HistogramRequest):
 
 
 @router.post("/category-breakdown")
-def category_breakdown(req: MetricsRequest):
-    # Reuse MetricsRequest to keep frontend simple? Define separate model already; use it here.
-    from models.far_model import CategoryBreakdownRequest  # local import to avoid circular
-    if isinstance(req, CategoryBreakdownRequest):
-        body = req
-    else:
-        # fallback if called with wrong model
-        return {"rows": []}
-    return _clean(far_service.get_category_breakdown(body.filters.model_dump(exclude_none=True), body.column, body.top_n))
+def category_breakdown(req: CategoryBreakdownRequest):
+    return _clean(
+        far_service.get_category_breakdown(
+            req.filters.model_dump(exclude_none=True), req.column, req.top_n
+        )
+    )
