@@ -95,22 +95,27 @@ def reset_cache() -> None:
 def _parse_capacity_to_value(capacity_str: Optional[str]) -> Optional[float]:
     if not isinstance(capacity_str, str):
         return None
-    s = capacity_str.replace("€", "").replace(",", "").strip().lower()
+    import re
+    s = capacity_str.replace("€", "").replace(",", "").replace("_", " ").strip().lower()
     try:
-        if "+" in s:
-            num = s.replace("+", "")
-            factor = 1000 if "k" in num else (1_000_000 if "m" in num else 1)
-            num = num.replace("k", "").replace("m", "")
-            return float(num) * factor
-        if "-" in s:
-            parts = s.split("-")
-            hi = parts[1]
-            factor = 1000 if "k" in hi else (1_000_000 if "m" in hi else 1)
-            hi = hi.replace("k", "").replace("m", "")
-            return float(hi) * factor
-        factor = 1000 if "k" in s else (1_000_000 if "m" in s else 1)
-        s = s.replace("k", "").replace("m", "")
-        return float(s) * factor
+        # Extract numeric tokens with optional k/m suffix, e.g., 30k, 300k, 1m
+        tokens = re.findall(r"(\d+)\s*([km]?)", s)
+        nums = []
+        for num, suf in tokens:
+            val = float(num)
+            if suf == "k":
+                val *= 1_000
+            elif suf == "m":
+                val *= 1_000_000
+            nums.append(val)
+        if nums:
+            return max(nums)  # use upper bound for range bands
+        # Handle textual hints
+        if "lt" in s and tokens:
+            return float(nums[0])
+        if "+" in s and tokens:
+            return float(nums[0])
+        return None
     except Exception:
         return None
 
@@ -148,17 +153,24 @@ def _apply_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
     if capacity:
         minimum = capacity.get("minimum")
         maximum = capacity.get("maximum")
-        if "capacity_value" in out.columns:
-            if minimum is not None:
-                out = out[out["capacity_value"] >= minimum]
-            if maximum is not None:
-                out = out[out["capacity_value"] <= maximum]
-        elif "investmentCapacity" in out.columns and (minimum is not None or maximum is not None):
-            parsed = out["investmentCapacity"].map(_parse_capacity_to_value)
-            if minimum is not None:
-                out = out[parsed >= minimum]
-            if maximum is not None:
-                out = out[parsed <= maximum]
+        if minimum is not None or maximum is not None:
+            if "capacity_value" in out.columns:
+                mask = pd.Series(True, index=out.index)
+                if minimum is not None:
+                    mask &= out["capacity_value"] >= minimum
+                if maximum is not None:
+                    mask &= out["capacity_value"] <= maximum
+                out = out[mask]
+            elif "investmentCapacity" in out.columns:
+                parsed = out["investmentCapacity"].map(_parse_capacity_to_value)
+                mask = pd.Series(True, index=out.index)
+                if minimum is not None:
+                    mask &= parsed >= minimum
+                if maximum is not None:
+                    mask &= parsed <= maximum
+                # Drop NaNs from parsed comparisons by filling with False to avoid accidental inclusion
+                mask = mask.fillna(False)
+                out = out[mask]
     # date
     date_range = (filters or {}).get("date_range")
     date_col = None
