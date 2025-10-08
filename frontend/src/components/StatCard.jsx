@@ -1,35 +1,44 @@
 import React from "react";
 import { Card, CardContent, Box, Typography, Chip } from "@mui/material";
 import { formatPercentage } from "../utils/mathHelpers";
-const StatCard = ({ title, value, icon: Icon, trend }) => (
-  <Card elevation={0} sx={styles.statCard}>
-    <CardContent sx={{ p: 3 }}>
-      {/* icon at top-right */}
-      <Box sx={styles.iconContainer}>
-        <Box sx={styles.iconWrapper}>
-          <Icon size={20} color="#305D9E" />
+
+const StatCard = ({ title, value, icon: Icon, trend, decimals = 2 }) => {
+  // format number if it's numeric
+  const formattedValue =
+    typeof value === "number"
+      ? Number.isInteger(value)
+        ? value.toLocaleString() // no decimals for whole numbers
+        : value.toLocaleString(undefined, {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: decimals, // round only if decimal
+          })
+      : value;
+
+  return (
+    <Card elevation={0} sx={styles.statCard}>
+      <CardContent sx={{ p: 3 }}>
+        <Box sx={styles.iconContainer}>
+          <Box sx={styles.iconWrapper}>
+            <Icon size={20} color="#305D9E" />
+          </Box>
         </Box>
-      </Box>
 
-      {/* title */}
-      <Typography sx={styles.statTitle}>{title}</Typography>
+        <Typography sx={styles.statTitle}>{title}</Typography>
 
-      {/* value + trend */}
-      <Box sx={styles.valueRow}>
-        {/* value */}
-        <Typography sx={styles.statValue}>{value}</Typography>
-        {/* trend */}
-        {trend !== undefined && (
-          <Chip
-            label={formatPercentage(trend, trend >= 0)}
-            size="small"
-            sx={styles.trendChip(trend)}
-          />
-        )}
-      </Box>
-    </CardContent>
-  </Card>
-);
+        <Box sx={styles.valueRow}>
+          <Typography sx={styles.statValue}>{formattedValue}</Typography>
+          {trend !== undefined && (
+            <Chip
+              label={formatPercentage(trend, trend >= 0)}
+              size="small"
+              sx={styles.trendChip(trend)}
+            />
+          )}
+        </Box>
+      </CardContent>
+    </Card>
+  );
+};
 
 export default StatCard;
 

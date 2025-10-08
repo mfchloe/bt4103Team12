@@ -26,7 +26,7 @@ class FARFilters(BaseModel):
     search_query: Optional[str] = Field(default=None)
 
 
-# Requests
+# requests
 class MetricsRequest(BaseModel):
     filters: FARFilters
 
@@ -86,7 +86,7 @@ class CategoryBreakdownResponse(BaseModel):
     rows: List[CategoryRow]
 
 
-# Responses
+# responses
 class MetricsResponse(BaseModel):
     customers: int = 0
     avg_portfolio_value: Optional[float] = None

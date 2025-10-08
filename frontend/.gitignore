@@ -145,3 +145,5 @@ venv.bak/
 # OS
 .DS_Store
 Thumbs.db
+
+backend/datasets/*.csv

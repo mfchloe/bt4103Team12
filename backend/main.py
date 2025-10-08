@@ -50,7 +50,7 @@ async def health_check():
         "version": "1.0.0"
     }
 
-
+# uvicorn main:app --reload --port 8000
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",

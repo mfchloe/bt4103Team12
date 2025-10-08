@@ -17,10 +17,15 @@ DATASET_DIRS = [
 ]
 
 
+
 @dataclass
 class DatasetPaths:
     customers: Optional[str]
     transactions: Optional[str]
+    assets: Optional[str]
+    markets: Optional[str]
+    close_prices: Optional[str]
+
 
 
 def _detect_file(prefix: str) -> Optional[str]:
@@ -37,20 +42,38 @@ def _detect_file(prefix: str) -> Optional[str]:
 
 @lru_cache(maxsize=1)
 def detect_datasets() -> DatasetPaths:
-    # Accept several likely filenames for customer engineered dataset
+    # Customers
     customers = (
         _detect_file("customer_information_with_engineered_df")
         or _detect_file("customer_information_with_engineered")
-        or _detect_file("customers_information_with_engineered")
-        or _detect_file("customers_information_with_engineered_df")
-        or _detect_file("customer_engineering_with_engineered")
     )
-    # accommodate typo or correct spelling for assets/transactions
-    assets_a = _detect_file("asset_infomration_with_engineered")
-    assets_b = _detect_file("asset_information_with_engineered")
-    transactions = assets_a or assets_b
-    return DatasetPaths(customers=customers, transactions=transactions)
 
+    # Transactions
+    transactions = (
+        _detect_file("transactions_df")
+        or _detect_file("transactions")
+        or _detect_file("customer_transactions")
+    )
+
+    # Assets
+    assets = (
+        _detect_file("asset_information_with_engineered")
+        or _detect_file("asset_infomration_with_engineered")  # typo
+    )
+
+    # Markets
+    markets = _detect_file("markets") or _detect_file("market_info")
+
+    # Close prices
+    close_prices = _detect_file("close_prices") or _detect_file("asset_prices")
+
+    return DatasetPaths(
+        customers=customers,
+        transactions=transactions,
+        assets=assets,
+        markets=markets,
+        close_prices=close_prices,
+    )
 
 def _read_df(path: str) -> pd.DataFrame:
     if path.endswith(".parquet"):
@@ -59,24 +82,39 @@ def _read_df(path: str) -> pd.DataFrame:
 
 
 @lru_cache(maxsize=1)
+@lru_cache(maxsize=1)
 def load_dataframes() -> Dict[str, pd.DataFrame]:
     paths = detect_datasets()
     dfs: Dict[str, pd.DataFrame] = {}
+    
     if paths.customers:
         cust_df = _read_df(paths.customers)
-        # Normalize date-like columns
         for col in ["timestamp", "lastQuestionnaireDate"]:
             if col in cust_df.columns:
                 cust_df[col] = pd.to_datetime(cust_df[col], errors="coerce")
         dfs["customers"] = cust_df
+        
     if paths.transactions:
-        df = _read_df(paths.transactions)
-        # Ensure txn date column is datetime if present
+        tx_df = _read_df(paths.transactions)
         for col in ["date", "txn_date", "transaction_date"]:
-            if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors="coerce")
+            if col in tx_df.columns:
+                tx_df[col] = pd.to_datetime(tx_df[col], errors="coerce")
                 break
-        dfs["transactions"] = df
+        dfs["transactions"] = tx_df
+        
+    if paths.assets:
+        asset_df = _read_df(paths.assets)
+        dfs["assets"] = asset_df
+        
+    if paths.markets:
+        market_df = _read_df(paths.markets)
+        dfs["markets"] = market_df
+        
+    if paths.close_prices:
+        price_df = _read_df(paths.close_prices)
+        price_df["timestamp"] = pd.to_datetime(price_df["timestamp"], errors="coerce")
+        dfs["close_prices"] = price_df
+
     return dfs
 
 
@@ -120,16 +158,30 @@ def _parse_capacity_to_value(capacity_str: Optional[str]) -> Optional[float]:
         return None
 
 
-def _apply_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
+def _apply_filters(df: pd.DataFrame, filters: dict, dataset_type: str = "customer") -> pd.DataFrame:
     if df is None or df.empty:
-        return df
-    out = df
+        return df.copy()
+
+    out = df.copy()
+
     # Map incoming filter keys to dataset columns
-    mapping = {
-        "customer_type": ["customer_type", "customerType"],
-        "investor_type": ["investor_type"],
-        "risk_level": ["risk_level", "riskLevel"],
-    }
+    mapping = {}
+    if dataset_type == "customer":
+        mapping = {
+            "customer_type": ["customerType"],
+            "investor_type": ["investor_type"],
+            "risk_level": ["riskLevel"],
+        }
+        sector_col = "preferred_sector"
+    elif dataset_type == "asset":
+        mapping = {
+            "investor_type": ["investor_type"],  # optional
+        }
+        sector_col = "sector"
+    else:
+        sector_col = None
+
+    # Categorical filters
     for key, candidates in mapping.items():
         values = (filters or {}).get(key)
         if values:
@@ -138,54 +190,40 @@ def _apply_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
                 values_l = set(str(v).lower() for v in values)
                 col_l = out[present_col].astype(str).str.lower()
                 out = out[col_l.isin(values_l)]
-    # sectors: works with transactions.sector OR customers.preferred_sector/current_dominant_sector
+
+    # Sector filter
     sectors = (filters or {}).get("sectors")
-    if sectors:
+    if sectors and sector_col and sector_col in out.columns:
         sectors_l = set(str(v).lower() for v in sectors)
-        if "sector" in out.columns:
-            out = out[out["sector"].astype(str).str.lower().isin(sectors_l)]
-        elif "preferred_sector" in out.columns:
-            out = out[out["preferred_sector"].astype(str).str.lower().isin(sectors_l)]
-        elif "current_dominant_sector" in out.columns:
-            out = out[out["current_dominant_sector"].astype(str).str.lower().isin(sectors_l)]
-    # numeric
-    capacity = (filters or {}).get("investment_capacity")
-    if capacity:
+        out = out[out[sector_col].astype(str).str.lower().isin(sectors_l)]
+
+    # Numeric filter: investmentCapacity
+    capacity = (filters or {}).get("investmentCapacity")
+    if capacity and "investmentCapacity" in out.columns:
         minimum = capacity.get("minimum")
         maximum = capacity.get("maximum")
-        if minimum is not None or maximum is not None:
-            if "capacity_value" in out.columns:
-                mask = pd.Series(True, index=out.index)
-                if minimum is not None:
-                    mask &= out["capacity_value"] >= minimum
-                if maximum is not None:
-                    mask &= out["capacity_value"] <= maximum
-                out = out[mask]
-            elif "investmentCapacity" in out.columns:
-                parsed = out["investmentCapacity"].map(_parse_capacity_to_value)
-                mask = pd.Series(True, index=out.index)
-                if minimum is not None:
-                    mask &= parsed >= minimum
-                if maximum is not None:
-                    mask &= parsed <= maximum
-                # Drop NaNs from parsed comparisons by filling with False to avoid accidental inclusion
-                mask = mask.fillna(False)
-                out = out[mask]
-    # date
+        parsed = out["investmentCapacity"].map(_parse_capacity_to_value)
+        mask = pd.Series(True, index=out.index)
+        if minimum is not None:
+            mask &= parsed >= minimum
+        if maximum is not None:
+            mask &= parsed <= maximum
+        mask = mask.fillna(False)
+        out = out[mask]
+
+    # Date filter
     date_range = (filters or {}).get("date_range")
-    date_col = None
-    for c in ["date", "txn_date", "transaction_date", "timestamp", "lastQuestionnaireDate"]:
-        if c in out.columns:
-            date_col = c
-            break
+    date_col = next((c for c in ["date", "txn_date", "transaction_date", "timestamp", "lastQuestionnaireDate"] if c in out.columns), None)
     if date_range and date_col:
         start = date_range.get("start")
         end = date_range.get("end")
         if start:
-            out = out[out[date_col] >= pd.to_datetime(start)]
+            out = out[pd.to_datetime(out[date_col], errors="coerce") >= pd.to_datetime(start)]
         if end:
-            out = out[out[date_col] <= pd.to_datetime(end)]
+            out = out[pd.to_datetime(out[date_col], errors="coerce") <= pd.to_datetime(end)]
+
     return out
+
 
 
 def get_metrics(filters: dict) -> dict:
@@ -194,100 +232,84 @@ def get_metrics(filters: dict) -> dict:
     if cust is None or cust.empty:
         return {
             "customers": 0,
-            "avg_portfolio_value": None,
-            "median_holding_days": None,
             "avg_transactions_per_month": None,
-            "stock_pct": None,
-            "etf_pct": None,
+            "avg_transactions_per_week": None,
+            "median_days_since_last_buy": None,
+            "avg_trading_activity_ratio": None,
+            "total_net_cash_flow": None,
+            "total_industries_bought": 0,
+            "total_asset_categories_bought": 0,
         }
+
+    # apply filters
     cust_f = _apply_filters(cust, filters)
-    customers = int(len(cust_f))
-    avg_portfolio_value = float(cust_f["portfolio_value"].mean()) if "portfolio_value" in cust_f.columns and customers else None
-    median_holding_days = float(cust_f["holding_days"].median()) if "holding_days" in cust_f.columns and customers else None
-    avg_tx = float(cust_f["avg_transactions_per_month"].mean()) if "avg_transactions_per_month" in cust_f.columns and customers else None
-    stock_pct = None
-    etf_pct = None
-    if "pct_equity" in cust_f.columns:
-        stock_pct = float(cust_f["pct_equity"].mean() / 100.0)
-    if "pct_etf" in cust_f.columns:
-        etf_pct = float(cust_f["pct_etf"].mean() / 100.0)
+    n_customers = len(cust_f)
+
+    avg_tx_month = cust_f["avg_transactions_per_month"].mean() if "avg_transactions_per_month" in cust_f.columns else None
+    avg_tx_week = cust_f["avg_transactions_per_week"].mean() if "avg_transactions_per_week" in cust_f.columns else None
+    avg_trading_ratio = cust_f["trading_activity_ratio"].mean() if "trading_activity_ratio" in cust_f.columns else None
+
+    # count unique industries and asset categories across all customers
+    total_industries_bought = cust_f["preferred_industry"].nunique() if "preferred_industry" in cust_f.columns else 0
+
     return {
-        "customers": customers,
-        "avg_portfolio_value": avg_portfolio_value,
-        "median_holding_days": median_holding_days,
-        "avg_transactions_per_month": avg_tx,
-        "stock_pct": stock_pct,
-        "etf_pct": etf_pct,
+        "customers": int(n_customers),
+        "avg_transactions_per_month": float(avg_tx_month) if avg_tx_month is not None else None,
+        "avg_transactions_per_week": float(avg_tx_week) if avg_tx_week is not None else None,
+        "avg_trading_activity_ratio": float(avg_trading_ratio) if avg_trading_ratio is not None else None,
+        "total_industries_bought": int(total_industries_bought),
     }
 
 
-def get_top_assets(filters: dict, top_n: int = 20) -> dict:
+def get_top_assets(filters: dict, top_n: int = 10) -> dict:
     dfs = load_dataframes()
     cust = dfs.get("customers")
     tx = dfs.get("transactions")
-    if tx is None or tx.empty or cust is None or cust.empty:
+    assets = dfs.get("assets")
+    if tx is None or tx.empty or cust is None or cust.empty or assets is None:
         return {"rows": []}
+    
     cust_f = _apply_filters(cust, filters)
     if cust_f.empty:
         return {"rows": []}
-
-    # determine cohort customer ids
-    cust_id_col = "customer_id" if "customer_id" in cust_f.columns else ("customerID" if "customerID" in cust_f.columns else None)
+    
+    cust_id_col = "customerID" 
     cust_ids = set(cust_f[cust_id_col]) if cust_id_col else set()
-    # compute adoption in cohort: % of cohort customers who have any txn/holding in asset
+    
     tx_f = _apply_filters(tx, filters)
-    if cust_id_col and cust_id_col in tx_f.columns:
-        tx_f = tx_f[tx_f[cust_id_col].isin(cust_ids)] if cust_ids else tx_f
-
-    # adoption per asset for cohort
+    if cust_id_col and cust_id_col in tx_f.columns and cust_ids:
+        tx_f = tx_f[tx_f[cust_id_col].isin(cust_ids)]
+    
+    # Join with assets to get asset name/category
+    if "ISIN" in tx_f.columns and "ISIN" in assets.columns:
+        tx_f = tx_f.merge(assets[["ISIN", "assetName", "assetShortName", "assetCategory"]], on="ISIN", how="left")
+        tx_f["asset"] = tx_f["assetName"].fillna(tx_f["ISIN"])
+    
     if "asset" not in tx_f.columns:
         return {"rows": []}
-    cohort_asset_adopters = tx_f.groupby("asset")[cust_id_col].nunique().rename("cohort_buyers") if cust_id_col in tx_f.columns else tx_f.groupby("asset").size().rename("cohort_txns")
-
+    
+    # Compute adoption/lift as before
+    cohort_asset_adopters = tx_f.groupby("asset")[cust_id_col].nunique() if cust_id_col in tx_f.columns else tx_f.groupby("asset").size()
     cohort_size = len(cust_f)
-
-    # population adoption baseline
-    pop_tx = tx
-    pop_asset_adopters = pop_tx.groupby("asset")[cust_id_col].nunique().rename("pop_buyers") if cust_id_col and cust_id_col in pop_tx.columns else pop_tx.groupby("asset").size().rename("pop_txns")
-    pop_customers = len(cust) if (cust is not None and cust_id_col and cust_id_col in cust.columns) else None
-
-    df = pd.concat([cohort_asset_adopters, pop_asset_adopters], axis=1).fillna(0)
+    
+    pop_asset_adopters = tx.groupby("ISIN")[cust_id_col].nunique() if cust_id_col in tx.columns else tx.groupby("ISIN").size()
+    pop_customers = len(cust) if cust is not None else None
+    
+    df = pd.concat([cohort_asset_adopters.rename("cohort_buyers"), pop_asset_adopters.rename("pop_buyers")], axis=1).fillna(0)
+    
     rows = []
-    # compute momentum slope using last N months volume for simplicity if date present
-    date_col = None
-    for c in ["date", "txn_date", "transaction_date"]:
-        if c in tx_f.columns:
-            date_col = c
-            break
-
-    sort_col = df.columns[0]
-    for asset, rec in df.sort_values(by=sort_col, ascending=False).head(top_n).iterrows():
-        cohort_count = rec.get("cohort_buyers", rec.get("cohort_txns", 0))
-        pop_count = rec.get("pop_buyers", rec.get("pop_txns", 1))
+    for asset, rec in df.sort_values(by="cohort_buyers", ascending=False).head(top_n).iterrows():
+        cohort_count = rec.get("cohort_buyers", 0)
+        pop_count = rec.get("pop_buyers", 1)
         adoption_rate = float(cohort_count) / float(cohort_size) if cohort_size else 0.0
-        lift = (float(cohort_count) / float(cohort_size)) / (float(pop_count) / float(pop_customers)) if pop_customers and pop_customers > 0 and pop_count > 0 and cohort_size > 0 else None
-
-        momentum_slope = None
-        if date_col:
-            tx_asset = tx_f[tx_f["asset"] == asset]
-            if not tx_asset.empty:
-                ts = tx_asset.set_index(date_col).resample("M").size()
-                if len(ts) >= 2:
-                    # simple slope: last value - median of previous
-                    recent = ts.tail(3).mean()
-                    prior = ts.iloc[:-3].median() if len(ts) > 3 else ts.iloc[0]
-                    momentum_slope = float(recent - prior) / max(prior, 1.0)
-
+        lift = (float(cohort_count)/cohort_size)/(pop_count/pop_customers) if pop_customers and pop_count > 0 and cohort_size > 0 else None
         rows.append({
             "asset": asset,
             "adoption_rate": float(adoption_rate),
-            "lift": float(lift) if lift is not None else None,
-            "momentum_slope": momentum_slope,
-            "median_holding_days": None,
-            "avg_position_value": None,
+            "lift": float(lift) if lift is not None else None
         })
-
     return {"rows": rows}
+
 
 
 def get_sector_prefs(filters: dict) -> dict:
@@ -295,104 +317,88 @@ def get_sector_prefs(filters: dict) -> dict:
     cust = dfs.get("customers")
     tx = dfs.get("transactions")
     rows = []
-    # If transactions exist, use them; otherwise, compute from customers' preferred sector
+
+    # Helper to compute adoption and lift
+    def compute_rows(by_sector: pd.Series, pop_by_sector: pd.Series, cohort_size: int, pop_customers: int):
+        result = []
+        for sector, count in by_sector.sort_values(ascending=False).items():
+            adoption = float(count) / cohort_size if cohort_size else 0.0
+            pop_adoption = float(pop_by_sector.get(sector, 0)) / pop_customers if pop_customers else 0.0
+            lift = (adoption / pop_adoption) if pop_adoption > 0 else None
+            result.append({"sector": sector, "adoption_rate": adoption, "lift": lift})
+        return result
+
+    # Case 1: Use transactions if available
     if tx is not None and not tx.empty and "sector" in tx.columns:
         tx_f = _apply_filters(tx, filters)
-        if "sector" not in tx_f.columns:
+        if tx_f.empty:
             return {"rows": []}
-        cohort_size = None
-        if cust is not None and not cust.empty:
-            cust_f = _apply_filters(cust, filters)
-            cohort_size = len(cust_f) if not cust_f.empty else None
-        by_sector = (
-            tx_f.groupby("sector")["customer_id"].nunique()
-            if "customer_id" in tx_f.columns
-            else tx_f.groupby("sector").size()
-        )
-        # baseline
-        pop_by_sector = (
-            tx.groupby("sector")["customer_id"].nunique()
-            if "customer_id" in tx.columns
-            else tx.groupby("sector").size()
-        )
-        pop_customers = len(cust) if cust is not None and "customer_id" in (cust.columns) else None
-        for sector, count in by_sector.sort_values(ascending=False).items():
-            adoption = float(count) / float(cohort_size) if cohort_size else None
-            lift = None
-            if pop_customers and pop_customers > 0:
-                pop_adoption = float(pop_by_sector.get(sector, 0)) / float(pop_customers)
-                if adoption is not None and pop_adoption > 0:
-                    lift = adoption / pop_adoption
-            rows.append({"sector": sector, "adoption_rate": adoption or 0.0, "lift": lift})
+
+        # Compute counts
+        cohort_size = len(cust) if cust is not None else 0
+        by_sector = tx_f.groupby("sector")["customerID"].nunique() if "customerID" in tx_f.columns else tx_f.groupby("sector").size()
+        pop_by_sector = tx.groupby("sector")["customerID"].nunique() if cust is not None and "customerID" in tx.columns else tx.groupby("sector").size()
+        pop_customers = len(cust) if cust is not None else 0
+        rows = compute_rows(by_sector, pop_by_sector, cohort_size, pop_customers)
         return {"rows": rows}
 
-    # Fallback: use customers' preferred sector
-    if cust is None or cust.empty:
+    # Case 2: fallback to customers' preferred sector
+    if cust is None or cust.empty or "preferred_sector" not in cust.columns:
         return {"rows": []}
+
     cust_f = _apply_filters(cust, filters)
-    if "preferred_sector" not in cust_f.columns:
+    if cust_f.empty:
         return {"rows": []}
+
     cohort_size = len(cust_f)
     by_sector = cust_f["preferred_sector"].dropna().value_counts()
-    # baseline over whole population
     pop_by_sector = cust["preferred_sector"].dropna().value_counts()
     pop_customers = len(cust)
-    for sector, count in by_sector.items():
-        adoption = float(count) / float(cohort_size) if cohort_size else 0.0
-        pop_adoption = float(pop_by_sector.get(sector, 0)) / float(pop_customers) if pop_customers else 0.0
-        lift = (adoption / pop_adoption) if pop_adoption > 0 else None
-        rows.append({"sector": sector, "adoption_rate": adoption, "lift": lift})
-    rows.sort(key=lambda r: r["adoption_rate"], reverse=True)
+    rows = compute_rows(by_sector, pop_by_sector, cohort_size, pop_customers)
+
     return {"rows": rows}
 
 
 def get_activity_series(filters: dict, interval: str = "month") -> dict:
     dfs = load_dataframes()
     tx = dfs.get("transactions")
-    # If no transactions, fall back to customer timestamps
+
     if tx is None or tx.empty:
-        cust = dfs.get("customers")
-        if cust is None or cust.empty:
-            return {"rows": []}
-        cust_f = _apply_filters(cust, filters)
-        c_date_col = None
-        for c in ["timestamp", "lastQuestionnaireDate"]:
-            if c in cust_f.columns:
-                c_date_col = c
-                break
-        if not c_date_col:
-            return {"rows": []}
-        rule = {"day": "D", "week": "W", "month": "MS", "quarter": "QS", "year": "YS"}.get(interval, "MS")
-        series = cust_f.set_index(c_date_col).sort_index().groupby(pd.Grouper(freq=rule)).size()
-        rows = [
-            {"period": idx.strftime("%Y-%m"), "buy_volume": int(v), "unique_buyers": int(v)}
-            for idx, v in series.items()
-        ]
-        return {"rows": rows}
+        return {"rows": []}
 
+    # Apply filters
     tx_f = _apply_filters(tx, filters)
-    date_col = None
-    for c in ["date", "txn_date", "transaction_date", "timestamp"]:
-        if c in tx_f.columns:
-            date_col = c
-            break
-    if date_col is None:
+
+    # Pick the date column
+    date_col = next((c for c in ["date", "txn_date", "transaction_date", "timestamp"] if c in tx_f.columns), None)
+    if not date_col:
         return {"rows": []}
 
-    # Ensure datetime index for resampling
-    tx_f = tx_f.copy()
-    tx_f[date_col] = pd.to_datetime(tx_f[date_col], errors="coerce")
-    tx_f = tx_f.dropna(subset=[date_col])
-    if tx_f.empty:
+    # Convert to datetime
+    df = tx_f[[date_col, "customerID"]].copy()
+    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+    df = df.dropna(subset=[date_col])
+
+    if df.empty:
         return {"rows": []}
 
+    # determine min/max dates to bound the resampling
+    start_date = df[date_col].min()
+    end_date = df[date_col].max()
+
+    # choose frequency
     rule = {"day": "D", "week": "W", "month": "MS", "quarter": "QS", "year": "YS"}.get(interval, "MS")
-    grouped = tx_f.set_index(date_col).sort_index().groupby(pd.Grouper(freq=rule))
-    # Count rows if 'asset' column missing
-    size_series = grouped.size().rename("buy_volume")
-    series = size_series.to_frame()
-    if "customer_id" in tx_f.columns:
-        series["unique_buyers"] = grouped["customer_id"].nunique()
+
+    # create a complete date range within the dataset's timeframe
+    full_index = pd.date_range(start=start_date, end=end_date, freq=rule)
+
+    # group by period
+    grouped = df.set_index(date_col).sort_index().groupby(pd.Grouper(freq=rule))
+    series = grouped.size().reindex(full_index, fill_value=0).rename("buy_volume").to_frame()
+
+    if "customerID" in df.columns:
+        unique_buyers = grouped["customerID"].nunique().reindex(full_index, fill_value=0)
+        series["unique_buyers"] = unique_buyers
     else:
         series["unique_buyers"] = series["buy_volume"]
 
@@ -425,11 +431,13 @@ def get_scatter_sample(filters: dict, limit: int = 5000) -> dict:
     return {"rows": rows}
 
 
-def explain_asset(filters: dict, asset: str) -> dict:
+def explain_asset(filters: dict, isin: str) -> dict:
     dfs = load_dataframes()
     cust = dfs.get("customers")
     tx = dfs.get("transactions")
-    if tx is None or tx.empty:
+    assets = dfs.get("assets")
+
+    if tx is None or tx.empty or assets is None or assets.empty:
         return {
             "adoption_rate": None,
             "lift": None,
@@ -437,50 +445,51 @@ def explain_asset(filters: dict, asset: str) -> dict:
             "similar_customer_count": 0,
             "median_holding_days": None,
             "churn_pct_30d": None,
-            "notes": "No transactions data",
+            "asset_name": None,
+            "asset_category": None,
+            "notes": "No transactions or assets data",
         }
 
+    # Filter customers
     cust_f = _apply_filters(cust, filters) if cust is not None else None
-    cohort_size = len(cust_f) if cust_f is not None else None
+    cohort_size = len(cust_f) if cust_f is not None else 0
 
+    # Filter transactions for this ISIN
     tx_f = _apply_filters(tx, filters)
-    tx_asset = tx_f[tx_f.get("asset") == asset] if "asset" in tx_f.columns else pd.DataFrame()
+    tx_isin = tx_f[tx_f.get("ISIN") == isin]
 
-    adoption_rate = None
-    if cohort_size and "customer_id" in tx_asset.columns:
-        adoption_rate = float(tx_asset["customer_id"].nunique()) / float(cohort_size)
+    # Join asset info
+    asset_info = assets[assets["ISIN"] == isin]
+    asset_name = asset_info["assetName"].iloc[0] if not asset_info.empty else None
+    asset_category = asset_info["assetCategory"].iloc[0] if not asset_info.empty else None
 
-    lift = None
-    if cust is not None and "customer_id" in cust.columns and "customer_id" in tx.columns:
-        pop_adoption = float(tx[tx.get("asset") == asset]["customer_id"].nunique()) / float(len(cust))
-        if adoption_rate is not None and pop_adoption > 0:
-            lift = adoption_rate / pop_adoption
+    # Compute adoption/lift
+    adoption_rate = float(tx_isin["customerID"].nunique()) / cohort_size if cohort_size and "customerID" in tx_isin.columns else None
+    pop_adoption = float(tx[tx.get("ISIN") == isin]["customerID"].nunique()) / len(cust) if cust is not None else None
+    lift = adoption_rate / pop_adoption if adoption_rate is not None and pop_adoption else None
 
-    date_col = None
-    for c in ["date", "txn_date", "transaction_date"]:
-        if c in tx_asset.columns:
-            date_col = c
-            break
+    # Compute recent momentum
+    date_col = next((c for c in ["date", "txn_date", "transaction_date"] if c in tx_isin.columns), None)
     recent_momentum = None
-    if date_col and not tx_asset.empty:
-        ts = tx_asset.set_index(date_col).resample("M").size()
+    if date_col and not tx_isin.empty:
+        ts = tx_isin.set_index(date_col).resample("M").size()
         if len(ts) >= 2:
             recent = ts.tail(3).mean()
             prior = ts.iloc[:-3].median() if len(ts) > 3 else ts.iloc[0]
             recent_momentum = float(recent - prior) / max(prior, 1.0)
 
-    similar_customer_count = int(cohort_size or 0)
-
-    result = {
+    return {
         "adoption_rate": adoption_rate,
         "lift": lift,
         "recent_momentum": recent_momentum,
-        "similar_customer_count": similar_customer_count,
+        "similar_customer_count": cohort_size,
         "median_holding_days": None,
         "churn_pct_30d": None,
+        "asset_name": asset_name,
+        "asset_category": asset_category,
         "notes": None,
     }
-    return result
+
 
 
 def get_histogram(filters: dict, column: str, bins: int = 20) -> dict:
@@ -508,7 +517,19 @@ def get_category_breakdown(filters: dict, column: str, top_n: int = 20) -> dict:
     cust = dfs.get("customers")
     if cust is None or cust.empty or column not in cust.columns:
         return {"rows": []}
+
+    # apply filters first
     cust_f = _apply_filters(cust, filters)
-    counts = cust_f[column].dropna().astype(str).value_counts().head(top_n)
+
+    # fallback: if sectors filter exists but we dropped everything, include all rows for category breakdown
+    if cust_f.empty and 'sectors' in (filters or {}):
+        cust_f = cust.copy()
+
+    counts = (
+        cust_f[column].dropna().astype(str).value_counts().head(top_n)
+    )
     rows = [{"label": k, "value": int(v)} for k, v in counts.items()]
     return {"rows": rows}
+
+
+
