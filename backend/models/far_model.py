@@ -55,6 +55,37 @@ class ExplainRequest(BaseModel):
     asset: str
 
 
+class HistogramRequest(BaseModel):
+    filters: FARFilters
+    column: str = Field(description="Numeric column name to histogram")
+    bins: NonNegativeInt = Field(default=20)
+
+
+class HistogramBin(BaseModel):
+    bin_start: float
+    bin_end: float
+    count: int
+
+
+class HistogramResponse(BaseModel):
+    bins: List[HistogramBin]
+
+
+class CategoryBreakdownRequest(BaseModel):
+    filters: FARFilters
+    column: str = Field(description="Categorical column name to count")
+    top_n: NonNegativeInt = Field(default=20)
+
+
+class CategoryRow(BaseModel):
+    label: str
+    value: int
+
+
+class CategoryBreakdownResponse(BaseModel):
+    rows: List[CategoryRow]
+
+
 # Responses
 class MetricsResponse(BaseModel):
     customers: int = 0
