@@ -8,48 +8,12 @@ import ShowChartIcon from "@mui/icons-material/ShowChart";
 import PieChartIcon from "@mui/icons-material/PieChart";
 import StatCard from "../components/StatCard";
 import { FilterSidebar } from "../components/FARDashboard/FilterSideBar";
-import { InvestorTypeDonut } from "../components/FARDashboard/InvestorTypeDonut";
+import { DonutChart } from "../components/FARDashboard/DonutChart";
 import { HistogramCard } from "../components/FARDashboard/HistogramCard";
 import { CategoryBarCard } from "../components/FARDashboard/CategoryBarCard";
 import { TopAssetsTable } from "../components/FARDashboard/TopAssetsTable";
 import { ActivityLineChart } from "../components/FARDashboard/ActivityLineChart";
-
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
-
-const useApi = (path, body) => {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    let ignore = false;
-    const run = async () => {
-      if (!path) return;
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(`${API_BASE}${path}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body || {}),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        if (!ignore) setData(json);
-      } catch (e) {
-        if (!ignore) setError(e);
-      } finally {
-        if (!ignore) setLoading(false);
-      }
-    };
-    run();
-    return () => {
-      ignore = true;
-    };
-  }, [path, JSON.stringify(body)]);
-
-  return { data, loading, error };
-};
+import { useApi } from "../hooks/useApi";
 
 const FARDashboard = () => {
   const [filters, setFilters] = useState({
@@ -57,7 +21,7 @@ const FARDashboard = () => {
     investor_type: [],
     risk_level: [],
     sectors: [],
-    investment_capacity: { minimum: 0, maximum: 300000 },
+    investmentCapacity: { minimum: 0, maximum: 300000 },
     date_range: { start: null, end: null },
     search_query: "",
   });
@@ -89,13 +53,13 @@ const FARDashboard = () => {
     column: "trading_activity_ratio",
     bins: 30,
   });
-  // // Asset explanation
-  // const { data: explain } = useApi(selectedAsset ? "/api/far/explain" : null, {
-  //   ...body,
-  //   asset: selectedAsset,
-  // });
   // Activity over time
   const { data: activitySeries } = useApi("/api/far/activity-series", body);
+  const { data: assetCategoryData } = useApi("/api/far/category-breakdown", {
+    ...body,
+    column: "preferred_asset_category",
+  });
+  console.log(assetCategoryData);
 
   const investorTypeData = useMemo(
     () => investorBreakdown?.rows || [],
@@ -108,12 +72,16 @@ const FARDashboard = () => {
       investor_type: [],
       risk_level: ["Conservative", "Balanced", "Aggressive"],
       sectors: [],
-      investment_capacity: { minimum: 0, maximum: 300000 },
+      investmentCapacity: { minimum: 0, maximum: 300000 },
       date_range: { start: null, end: null },
       search_query: "",
     });
     setSelectedAsset(null);
   };
+
+  // Helper to safely format numbers
+  const safeNumber = (num, decimals = 2) =>
+    typeof num === "number" && !isNaN(num) ? num.toFixed(decimals) : "-";
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "grey.50", py: 3 }}>
@@ -127,7 +95,6 @@ const FARDashboard = () => {
           </Typography>
         </Box>
 
-        {/* KPI Cards */}
         {/* KPI Cards */}
         <Box
           sx={{
@@ -149,17 +116,13 @@ const FARDashboard = () => {
 
           <StatCard
             title="Avg Transactions/Week"
-            value={metrics?.avg_transactions_per_week?.toFixed(2) ?? "-"}
+            value={safeNumber(metrics?.avg_transactions_per_week)}
             icon={ShowChartIcon}
           />
 
           <StatCard
             title="Avg Trading Activity Ratio"
-            value={
-              metrics?.avg_trading_activity_ratio !== undefined
-                ? metrics.avg_trading_activity_ratio.toFixed(2)
-                : "-"
-            }
+            value={safeNumber(metrics?.avg_trading_activity_ratio)}
             icon={PieChartIcon}
           />
 
@@ -167,11 +130,6 @@ const FARDashboard = () => {
             title="Total Industries Bought"
             value={metrics?.total_industries_bought ?? "-"}
             icon={TrendingUpIcon}
-          />
-          <StatCard
-            title="Total Asset Categories Bought"
-            value={metrics?.total_asset_categories_bought ?? "-"}
-            icon={ShowChartIcon}
           />
         </Box>
 
@@ -201,12 +159,14 @@ const FARDashboard = () => {
                 gap: 3,
               }}
             >
-              <InvestorTypeDonut
+              <DonutChart
+                title="Investor Type Breakdown"
                 data={investorTypeData}
                 onSelect={(name) =>
                   setFilters((f) => ({ ...f, investor_type: [name] }))
                 }
               />
+
               <HistogramCard
                 title="Trading Activity Distribution"
                 bins={activityHist?.bins}
@@ -214,11 +174,20 @@ const FARDashboard = () => {
             </Box>
 
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" gutterBottom>
-                Customer Activity Over Time
-              </Typography>
-              <ActivityLineChart rows={activitySeries?.rows} />
+              <ActivityLineChart
+                title="Customer Activity over Time"
+                rows={activitySeries?.rows}
+              />
             </Box>
+            <DonutChart
+              title="Asset Category Breakdown"
+              data={assetCategoryData?.rows ?? []}
+              colors={["#0088FE", "#00C49F", "#FFBB28", "#FF8042"]}
+              onSelect={(category) =>
+                setFilters((f) => ({ ...f, asset_category: [category] }))
+              }
+              height={280}
+            />
 
             <CategoryBarCard
               title="Industry Preference"
