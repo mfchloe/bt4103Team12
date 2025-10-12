@@ -8,42 +8,42 @@ import {
   Legend,
 } from "recharts";
 
-const COLORS = ["#1976d2", "#42a5f5", "#90caf9", "#0d47a1"];
-
-interface InvestorTypeDonutProps {
+interface DonutChartProps {
+  title: string;
   data: Array<{ label: string; value: number }>;
-  onSelect?: (name: string) => void;
+  colors?: string[];
+  innerRadius?: number;
+  outerRadius?: number;
+  height?: number; // <- new
+  onSelect?: (label: string) => void;
 }
 
-export const InvestorTypeDonut = ({
+export const DonutChart = ({
+  title,
   data,
+  colors = ["#1976d2", "#42a5f5", "#90caf9", "#0d47a1", "#ff9800", "#f44336"],
+  innerRadius = 60,
+  outerRadius = 90,
+  height = 280, // default
   onSelect,
-}: InvestorTypeDonutProps) => {
+}: DonutChartProps) => {
   const chartData = (data || []).map((d, idx) => ({
     name: d.label,
     value: d.value,
-    fill: COLORS[idx % COLORS.length],
+    fill: colors[idx % colors.length],
   }));
 
   return (
-    <Card
-      sx={{
-        height: "100%",
-        transition: "all 0.3s",
-        "&:hover": {
-          boxShadow: 3,
-        },
-      }}
-    >
+    <Card sx={{ transition: "all 0.3s", "&:hover": { boxShadow: 3 } }}>
       <CardHeader
         title={
           <Typography variant="h6" fontWeight={600}>
-            Investor Type Breakdown
+            {title}
           </Typography>
         }
       />
       <CardContent>
-        <Box sx={{ height: 280 }}>
+        <Box sx={{ height }}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
@@ -52,11 +52,14 @@ export const InvestorTypeDonut = ({
                 nameKey="name"
                 cx="50%"
                 cy="50%"
-                innerRadius={60}
-                outerRadius={90}
+                innerRadius={innerRadius}
+                outerRadius={outerRadius}
                 paddingAngle={2}
                 onClick={(d) => onSelect?.(d?.name)}
-                style={{ cursor: "pointer", outline: "none" }}
+                style={{
+                  cursor: onSelect ? "pointer" : "default",
+                  outline: "none",
+                }}
               >
                 {chartData.map((entry, index) => (
                   <Cell

@@ -171,6 +171,7 @@ def _apply_filters(df: pd.DataFrame, filters: dict, dataset_type: str = "custome
             "customer_type": ["customerType"],
             "investor_type": ["investor_type"],
             "risk_level": ["riskLevel"],
+            # "investment_capacity": ['investmentCapacity']
         }
         sector_col = "preferred_sector"
     elif dataset_type == "asset":
