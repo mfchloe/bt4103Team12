@@ -34,7 +34,7 @@ const StatsSection = ({ totalValue, totalPL, totalReturn, sharpeRatio }) => {
         <StatCard
           title="Sharpe Ratio"
           value={sharpeRatio.toFixed(2)}
-          icon={Activity} // Use any icon representing risk/metrics
+          icon={Activity}
           trend={sharpeRatio >= 0 ? 1 : -1}
         />
       </Grid>

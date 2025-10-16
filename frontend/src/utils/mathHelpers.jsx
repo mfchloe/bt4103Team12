@@ -1,5 +1,6 @@
+import dayjs from "dayjs";
+
 export const calculateStockStats = (stock) => {
-  // if currentPrice is null, return default values
   if (stock.currentPrice === null || stock.currentPrice === undefined) {
     return {
       totalValue: null,
@@ -26,49 +27,58 @@ export const calculateSharpeRatio = (portfolio) => {
     0
   );
 
-  // weighted returns
+  if (!totalValue) return 0;
+
   const weightedReturns = portfolio.map((stock) => {
-    const weight = (stock.currentPrice * stock.shares) / totalValue;
-    const dailyReturn = (stock.currentPrice - stock.buyPrice) / stock.buyPrice;
+    const buyPrice = Number(stock.buyPrice);
+    const currentPrice = Number(stock.currentPrice);
+    if (!buyPrice || !currentPrice) return 0;
+
+    const weight = (currentPrice * stock.shares) / totalValue;
+    const dailyReturn = (currentPrice - buyPrice) / buyPrice;
     return dailyReturn * weight;
   });
 
-  // portfolio expected return
-  const portfolioReturn = weightedReturns.reduce((a, b) => a + b, 0);
-
-  // portfolio volatility (std dev)
+  const portfolioReturn = weightedReturns.reduce((acc, value) => acc + value, 0);
   const mean = portfolioReturn;
   const variance =
-    weightedReturns.reduce((sum, r) => sum + (r - mean) ** 2, 0) /
+    weightedReturns.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
     weightedReturns.length;
   const volatility = Math.sqrt(variance);
 
-  if (volatility === 0) return 0;
+  if (!volatility) return 0;
 
-  const riskFreeRate = 0; // for simplicity
-  const sharpeRatio = (portfolioReturn - riskFreeRate) / volatility;
-
-  return sharpeRatio;
+  const riskFreeRate = 0;
+  return (portfolioReturn - riskFreeRate) / volatility;
 };
 
 export const formatCurrency = (value) => {
-  if (value === null || value === undefined) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
     return "N/A";
   }
-  return `$${value.toFixed(2)}`;
-};
-export const formatPercentage = (value, isPositive) => {
-  if (value === null || value === undefined) {
-    return "N/A";
-  }
-  return `${isPositive ? "+" : ""}${value.toFixed(2)}%`;
+  return `$${numeric.toFixed(2)}`;
 };
 
-/**
- * Calculate the total cost of a portfolio
- * @param {Array} portfolio - array of stock objects with shares and buyPrice
- * @returns {number} total invested cost
- */
+export const formatPercentage = (value, isPositive) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "N/A";
+  }
+  return `${isPositive ? "+" : ""}${numeric.toFixed(2)}%`;
+};
+
+export const formatDate = (value) => {
+  if (!value) {
+    return "--";
+  }
+  const parsed = dayjs(value);
+  if (!parsed.isValid()) {
+    return "--";
+  }
+  return parsed.format("MMM D, YYYY");
+};
+
 export const calculateTotalCost = (portfolio) => {
   return portfolio.reduce(
     (sum, stock) => sum + stock.shares * stock.buyPrice,
@@ -76,14 +86,8 @@ export const calculateTotalCost = (portfolio) => {
   );
 };
 
-/**
- * Calculate the total value of a portfolio
- * @param {Array} portfolio - array of stock objects with shares and currentPrice
- * @returns {number} total portfolio value
- */
 export const calculateTotalValue = (portfolio) => {
   return portfolio.reduce((sum, stock) => {
-    // Skip stocks without current price
     if (stock.currentPrice === null || stock.currentPrice === undefined) {
       return sum;
     }
@@ -91,20 +95,10 @@ export const calculateTotalValue = (portfolio) => {
   }, 0);
 };
 
-/**
- * Calculate P&L for a portfolio
- * @param {Array} portfolio - array of stock objects
- * @returns {number} profit or loss
- */
 export const calculateTotalPL = (portfolio) => {
   return calculateTotalValue(portfolio) - calculateTotalCost(portfolio);
 };
 
-/**
- * Calculate total return (%) for a portfolio
- * @param {Array} portfolio - array of stock objects
- * @returns {number} total return percentage
- */
 export const calculateTotalReturn = (portfolio) => {
   const totalCost = calculateTotalCost(portfolio);
   if (totalCost === 0) return 0;

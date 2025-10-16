@@ -14,6 +14,7 @@ import {
 } from "@mui/material";
 import { Add, TrendingUp } from "@mui/icons-material";
 import { useState } from "react";
+import dayjs from "dayjs";
 
 // Mock recommendations - will be replaced with backend data later
 const mockRecommendations = [
@@ -65,6 +66,7 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
       name: stock.name,
       shares: 1,
       buyPrice: stock.currentPrice,
+      buyDate: dayjs().format("YYYY-MM-DD"),
       currentPrice: stock.currentPrice,
     });
 

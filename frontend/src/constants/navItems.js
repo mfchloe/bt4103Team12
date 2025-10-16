@@ -1,5 +1,6 @@
 import { FaPiggyBank } from "react-icons/fa6";
 import { MdAccessTimeFilled, MdDashboard } from "react-icons/md";
+
 export const navItems = [
   {
     path: "/",

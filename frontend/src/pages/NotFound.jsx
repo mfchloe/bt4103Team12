@@ -1,7 +1,6 @@
-import { Box, Typography, Button, Container } from "@mui/material";
+import { Box, Typography, Button } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { TrendingUp } from "lucide-react";
-import CustomButton from "../components/CustomButton";
 
 const NotFound = () => {
   const navigate = useNavigate();
@@ -17,17 +16,14 @@ const NotFound = () => {
     >
       <Box sx={styles.container}>
         <Box sx={styles.contentContainer}>
-          {/* icon */}
           <Box sx={styles.iconContainer}>
             <TrendingUp size={60} color="white" />
           </Box>
 
-          {/* 404 Text */}
           <Typography variant="h1" sx={styles.headerText}>
             404
           </Typography>
 
-          {/* message */}
           <Typography variant="h5" sx={styles.messageText}>
             Page Not Found
           </Typography>
@@ -44,9 +40,9 @@ const NotFound = () => {
             get you back on track to managing your portfolio.
           </Typography>
 
-          {/* button */}
-          <CustomButton
+          <Button
             onClick={() => navigate("/")}
+            variant="contained"
             sx={{
               bgcolor: "#305D9E",
               color: "white",
@@ -55,10 +51,11 @@ const NotFound = () => {
               fontSize: "1rem",
               fontWeight: 600,
               borderRadius: 2,
+              textTransform: "none",
             }}
           >
             Back to Portfolio
-          </CustomButton>
+          </Button>
         </Box>
       </Box>
     </Box>
@@ -76,6 +73,7 @@ const styles = {
     justifyContent: "center",
     minHeight: "85vh",
     width: "100%",
+    px: 4,
   },
   contentContainer: {
     textAlign: "center",

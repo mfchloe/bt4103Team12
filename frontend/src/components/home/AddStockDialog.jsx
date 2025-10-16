@@ -12,9 +12,17 @@ import {
   Alert,
   CircularProgress,
   Autocomplete,
+  FormControl,
+  FormControlLabel,
+  FormLabel,
+  Radio,
+  RadioGroup,
 } from "@mui/material";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import dayjs from "dayjs";
 import FormTextField from "../FormTextField";
-import CustomButton from "../CustomButton";
 
 const API_BASE_URL = "http://localhost:8000/api/yfinance";
 
@@ -23,6 +31,7 @@ const INITIAL_FORM_STATE = {
   name: "",
   shares: "",
   buyPrice: "",
+  buyDate: "",
 };
 
 const INITIAL_TOAST_STATE = {
@@ -31,7 +40,6 @@ const INITIAL_TOAST_STATE = {
   severity: "success",
 };
 
-// AUTOCOMPLETE component
 const StockAutocomplete = ({
   selectedStock,
   stockOptions,
@@ -82,15 +90,13 @@ const AddStockDialog = ({ open, onClose, onAdd }) => {
   const [searchLoading, setSearchLoading] = useState(false);
   const [stockOptions, setStockOptions] = useState([]);
   const [selectedStock, setSelectedStock] = useState(null);
+  const [purchaseMode, setPurchaseMode] = useState("price");
+  const [buyDateValue, setBuyDateValue] = useState(null);
 
-  // success/error for stock addition after submit button pressed
   const showToast = (message, severity = "success") => {
     setToast({ open: true, message, severity });
   };
 
-  // API calls
-
-  // search autocomplete
   const searchStocks = async (query) => {
     if (!query || query.length < 1) {
       setStockOptions([]);
@@ -115,7 +121,6 @@ const AddStockDialog = ({ open, onClose, onAdd }) => {
     }
   };
 
-  // fetch SINGLE stock price (for the one that's selected)
   const fetchStockPrice = async (symbol) => {
     const response = await fetch(`${API_BASE_URL}/${symbol}`);
     const data = await response.json();
@@ -129,7 +134,20 @@ const AddStockDialog = ({ open, onClose, onAdd }) => {
     throw new Error(data.error || "Failed to fetch stock data");
   };
 
-  // change stock name, symbol when new stock selected
+  const fetchHistoricalPrice = async (symbol, date) => {
+    const response = await fetch(
+      `${API_BASE_URL}/${symbol}/historical-price?date=${encodeURIComponent(
+        date
+      )}`
+    );
+    const data = await response.json();
+
+    if (data.success) {
+      return data;
+    }
+    throw new Error(data.error || "Failed to fetch historical price");
+  };
+
   const handleStockSelect = (_, value) => {
     setSelectedStock(value);
     setFormData((prev) => ({
@@ -139,25 +157,81 @@ const AddStockDialog = ({ open, onClose, onAdd }) => {
     }));
   };
 
-  // FORM CRUD
-
-  // form reset
   const resetForm = () => {
     setFormData(INITIAL_FORM_STATE);
     setSelectedStock(null);
     setStockOptions([]);
+    setPurchaseMode("price");
+    setBuyDateValue(null);
   };
 
   const updateFormField = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handlePurchaseModeChange = (event) => {
+    const value = event.target.value;
+    setPurchaseMode(value);
+    setFormData((prev) => ({
+      ...prev,
+      buyPrice: value === "price" ? prev.buyPrice : "",
+      buyDate: value === "date" ? prev.buyDate : "",
+    }));
+    if (value === "price") {
+      setBuyDateValue(null);
+    } else if (formData.buyDate) {
+      const parsed = dayjs(formData.buyDate);
+      setBuyDateValue(parsed.isValid() ? parsed : null);
+    }
+  };
+
+  const handleBuyDateChange = (newValue) => {
+    if (newValue && newValue.isValid()) {
+      setBuyDateValue(newValue);
+      updateFormField("buyDate", newValue.format("YYYY-MM-DD"));
+    } else {
+      setBuyDateValue(null);
+      updateFormField("buyDate", "");
+    }
+  };
+
   const validateForm = () => {
     const { symbol, name, shares, buyPrice } = formData;
-    if (!symbol || !name || !shares || !buyPrice) {
-      showToast("Please fill in all fields", "error");
+    if (!symbol || !name || !shares) {
+      showToast("Please fill in all required fields", "error");
       return false;
     }
+
+    const sharesValue = parseFloat(shares);
+    if (Number.isNaN(sharesValue) || sharesValue <= 0) {
+      showToast("Number of shares must be greater than zero", "error");
+      return false;
+    }
+
+    if (purchaseMode === "price") {
+      if (!buyPrice) {
+        showToast("Please enter the buy price", "error");
+        return false;
+      }
+      const priceValue = parseFloat(buyPrice);
+      if (Number.isNaN(priceValue) || priceValue <= 0) {
+        showToast("Please enter a valid buy price", "error");
+        return false;
+      }
+    }
+
+    if (purchaseMode === "date") {
+      if (!buyDateValue || !buyDateValue.isValid()) {
+        showToast("Please select a valid buy date", "error");
+        return false;
+      }
+      const now = dayjs();
+      if (buyDateValue.isAfter(now, "day")) {
+        showToast("Buy date cannot be in the future", "error");
+        return false;
+      }
+    }
+
     return true;
   };
 
@@ -169,34 +243,76 @@ const AddStockDialog = ({ open, onClose, onAdd }) => {
     setLoading(true);
 
     try {
-      // try to fetch current price
       let currentPrice = null;
       let priceWarning = "";
+      let resolvedBuyPrice = null;
+      let buyPriceNote = "";
+      const symbol = formData.symbol.toUpperCase();
 
-      try {
-        const stockData = await fetchStockPrice(formData.symbol);
-        currentPrice = stockData.currentPrice;
-      } catch (error) {
-        // if price fetch fails, allow manual entry without current price
-        priceWarning = " (real-time data unavailable)";
-        console.warn(`Could not fetch price for ${formData.symbol}:`, error);
+      if (purchaseMode === "date") {
+        try {
+          const historical = await fetchHistoricalPrice(
+            symbol,
+            formData.buyDate
+          );
+          resolvedBuyPrice = parseFloat(historical.price);
+          const effectiveDate = dayjs(historical.priceDate);
+          buyPriceNote = ` (closing price on ${effectiveDate.format(
+            "MM/DD/YYYY"
+          )})`;
+        } catch (error) {
+          showToast(
+            error.message ||
+              "Unable to fetch the historical price for the selected date.",
+            "error"
+          );
+          return;
+        }
+      } else {
+        resolvedBuyPrice = parseFloat(formData.buyPrice);
       }
 
-      // add stock
+      if (Number.isNaN(resolvedBuyPrice)) {
+        showToast("Please provide a valid buy price.", "error");
+        return;
+      }
+
+      try {
+        const stockData = await fetchStockPrice(symbol);
+        currentPrice = stockData.currentPrice;
+      } catch (error) {
+        priceWarning = "Real-time data unavailable.";
+        console.warn(`Could not fetch price for ${symbol}:`, error);
+      }
+
       onAdd({
-        symbol: formData.symbol.toUpperCase(),
+        symbol,
         name: formData.name,
         shares: parseFloat(formData.shares),
-        buyPrice: parseFloat(formData.buyPrice),
-        currentPrice: currentPrice,
+        buyPrice: resolvedBuyPrice,
+        buyDate: formData.buyDate || null,
+        currentPrice,
       });
 
-      // show success message
-      const successMessage = currentPrice
-        ? `${formData.symbol.toUpperCase()} has been added to your portfolio at $${currentPrice}`
-        : `${formData.symbol.toUpperCase()} has been added to your portfolio${priceWarning}`;
+      const baseMessage = `${symbol} has been added to your portfolio.`;
+      const realtimeMessage = currentPrice
+        ? ` Current price: $${currentPrice.toFixed(2)}.`
+        : priceWarning
+        ? ` ${priceWarning}`
+        : "";
+      const recordedBuyPriceMessage = ` Buy price recorded at $${resolvedBuyPrice.toFixed(
+        2
+      )}${buyPriceNote}.`;
+      const buyDateMessage = formData.buyDate
+        ? ` Buy date recorded as ${dayjs(formData.buyDate).format(
+            "MM/DD/YYYY"
+          )}.`
+        : "";
 
-      showToast(successMessage, "success");
+      showToast(
+        `${baseMessage}${realtimeMessage}${recordedBuyPriceMessage}${buyDateMessage}`,
+        "success"
+      );
 
       resetForm();
       onClose();
@@ -207,125 +323,176 @@ const AddStockDialog = ({ open, onClose, onAdd }) => {
     }
   };
 
-  // close dialog (cancel or press away)
   const handleDialogClose = () => {
     resetForm();
     onClose();
   };
 
   return (
-    <>
-      <Dialog
-        open={open}
-        onClose={handleDialogClose}
-        maxWidth="sm"
-        fullWidth
-        slotProps={{ paper: { sx: styles.dialogPaper } }}
-      >
-        <DialogTitle sx={styles.dialogTitle}>
-          Add Stock to Portfolio
-        </DialogTitle>
-
-        <DialogContent>
-          <DialogContentText sx={styles.dialogDescription}>
-            Search for a stock and enter your purchase details. The current
-            price of the stock will be fetched automatically.
-          </DialogContentText>
-
-          <Box
-            component="form"
-            onSubmit={handleSubmit}
-            sx={styles.form}
-            id="addStockForm"
-          >
-            <StockAutocomplete
-              selectedStock={selectedStock}
-              stockOptions={stockOptions}
-              searchLoading={searchLoading}
-              loading={loading}
-              onStockSelect={handleStockSelect}
-              onSearch={searchStocks}
-            />
-
-            <FormTextField
-              label="Stock Symbol*"
-              placeholder="e.g., AAPL"
-              value={formData.symbol}
-              onChange={(e) =>
-                updateFormField("symbol", e.target.value.toUpperCase())
-              }
-              disabled={loading}
-            />
-
-            <FormTextField
-              label="Company Name*"
-              placeholder="e.g., Apple Inc."
-              value={formData.name}
-              onChange={(e) => updateFormField("name", e.target.value)}
-              disabled={loading}
-            />
-
-            <FormTextField
-              label="Number of Shares*"
-              placeholder="e.g., 10"
-              type="number"
-              htmlInputProps={{ step: "0.01", min: "0.01" }}
-              value={formData.shares}
-              onChange={(e) => updateFormField("shares", e.target.value)}
-              disabled={loading}
-            />
-
-            <FormTextField
-              label="Buy Price ($)*"
-              placeholder="e.g., 150.00"
-              type="number"
-              htmlInputProps={{ step: "0.01", min: "0.01" }}
-              value={formData.buyPrice}
-              onChange={(e) => updateFormField("buyPrice", e.target.value)}
-              disabled={loading}
-            />
-          </Box>
-        </DialogContent>
-
-        <DialogActions sx={styles.dialogActions}>
-          <CustomButton
-            onClick={handleDialogClose}
-            variant="outlined"
-            sx={styles.cancelButton}
-            disabled={loading}
-          >
-            Cancel
-          </CustomButton>
-          <CustomButton
-            type="submit"
-            form="addStockForm"
-            variant="contained"
-            sx={styles.submitButton}
-            disabled={loading}
-            startIcon={
-              loading && <CircularProgress size={20} color="inherit" />
-            }
-          >
-            {loading ? "Adding..." : "Add Stock"}
-          </CustomButton>
-        </DialogActions>
-      </Dialog>
-
-      <Snackbar
-        open={toast.open}
-        autoHideDuration={4000}
-        onClose={() => setToast(INITIAL_TOAST_STATE)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      >
-        <Alert
-          onClose={() => setToast(INITIAL_TOAST_STATE)}
-          severity={toast.severity}
-          sx={{ width: "100%" }}
+    <LocalizationProvider dateAdapter={AdapterDayjs}>
+      <>
+        <Dialog
+          open={open}
+          onClose={handleDialogClose}
+          maxWidth="sm"
+          fullWidth
+          slotProps={{ paper: { sx: styles.dialogPaper } }}
         >
-          {toast.message}
-        </Alert>
-      </Snackbar>
-    </>
+          <DialogTitle sx={styles.dialogTitle}>
+            Add Stock to Portfolio
+          </DialogTitle>
+
+          <DialogContent>
+            <DialogContentText sx={styles.dialogDescription}>
+              Search for a stock and enter your purchase details. Provide the buy
+              price manually or select the date you purchased it and we'll fill it
+              in for you. The current price will be fetched automatically.
+            </DialogContentText>
+
+            <Box
+              component="form"
+              onSubmit={handleSubmit}
+              sx={styles.form}
+              id="addStockForm"
+            >
+              <StockAutocomplete
+                selectedStock={selectedStock}
+                stockOptions={stockOptions}
+                searchLoading={searchLoading}
+                loading={loading}
+                onStockSelect={handleStockSelect}
+                onSearch={searchStocks}
+              />
+
+              <FormTextField
+                label="Stock Symbol*"
+                placeholder="e.g., AAPL"
+                value={formData.symbol}
+                onChange={(e) =>
+                  updateFormField("symbol", e.target.value.toUpperCase())
+                }
+                disabled={loading}
+              />
+
+              <FormTextField
+                label="Company Name*"
+                placeholder="e.g., Apple Inc."
+                value={formData.name}
+                onChange={(e) => updateFormField("name", e.target.value)}
+                disabled={loading}
+              />
+
+              <FormTextField
+                label="Number of Shares*"
+                placeholder="e.g., 10"
+                type="number"
+                htmlInputProps={{ step: "0.01", min: "0.01" }}
+                value={formData.shares}
+                onChange={(e) => updateFormField("shares", e.target.value)}
+                disabled={loading}
+              />
+
+              <FormControl component="fieldset" sx={styles.purchaseModeGroup}>
+                <FormLabel sx={styles.fieldLabel}>
+                  How would you like to record the buy price?
+                </FormLabel>
+                <RadioGroup
+                  row
+                  value={purchaseMode}
+                  onChange={handlePurchaseModeChange}
+                  name="buy-price-mode"
+                >
+                  <FormControlLabel
+                    value="price"
+                    control={<Radio />}
+                    label="Enter buy price"
+                    disabled={loading}
+                  />
+                  <FormControlLabel
+                    value="date"
+                    control={<Radio />}
+                    label="Select buy date"
+                    disabled={loading}
+                  />
+                </RadioGroup>
+              </FormControl>
+
+              {purchaseMode === "price" ? (
+                <FormTextField
+                  label="Buy Price ($)*"
+                  placeholder="e.g., 150.00"
+                  type="number"
+                  htmlInputProps={{ step: "0.01", min: "0.01" }}
+                  value={formData.buyPrice}
+                  onChange={(e) => updateFormField("buyPrice", e.target.value)}
+                  disabled={loading}
+                  required={purchaseMode === "price"}
+                />
+              ) : (
+                <>
+                  <DatePicker
+                    label="Buy Date*"
+                    value={buyDateValue}
+                    onChange={handleBuyDateChange}
+                    disableFuture
+                    format="MM/DD/YYYY"
+                    slotProps={{
+                      textField: {
+                        fullWidth: true,
+                        required: purchaseMode === "date",
+                        disabled: loading,
+                      },
+                    }}
+                  />
+                  <DialogContentText sx={styles.helperText}>
+                    The system will fetch the closing price on the selected date (or
+                    the most recent trading day if markets were closed).
+                  </DialogContentText>
+                </>
+              )}
+            </Box>
+          </DialogContent>
+
+          <DialogActions sx={styles.dialogActions}>
+            <Button
+              onClick={handleDialogClose}
+              variant="outlined"
+              sx={styles.cancelButton}
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="addStockForm"
+              variant="contained"
+              sx={styles.submitButton}
+              disabled={loading}
+              startIcon={
+                loading && <CircularProgress size={20} color="inherit" />
+              }
+            >
+              {loading ? "Adding..." : "Add Stock"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Snackbar
+          open={toast.open}
+          autoHideDuration={4000}
+          onClose={() => setToast(INITIAL_TOAST_STATE)}
+          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        >
+          <Alert
+            onClose={() => setToast(INITIAL_TOAST_STATE)}
+            severity={toast.severity}
+            sx={{ width: "100%" }}
+          >
+            {toast.message}
+          </Alert>
+        </Snackbar>
+      </>
+    </LocalizationProvider>
   );
 };
 
@@ -358,7 +525,16 @@ const styles = {
     color: "#1a1a1a",
     mb: 1,
   },
-
+  purchaseModeGroup: {
+    mt: -1,
+    "& .MuiFormControlLabel-root": {
+      marginRight: 3,
+    },
+    "& .MuiFormControlLabel-label": {
+      fontSize: "0.95rem",
+      fontWeight: 500,
+    },
+  },
   autocomplete: {
     "& .MuiInputLabel-root": {
       position: "static",
@@ -385,6 +561,11 @@ const styles = {
         borderWidth: 2,
       },
     },
+  },
+  helperText: {
+    fontSize: "0.9rem",
+    color: "#6b7280",
+    mt: -1,
   },
   dialogActions: {
     px: 3,

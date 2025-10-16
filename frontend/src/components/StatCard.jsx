@@ -1,18 +1,10 @@
 import React from "react";
 import { Card, CardContent, Box, Typography, Chip } from "@mui/material";
-import { formatPercentage } from "../utils/mathHelpers";
 
-const StatCard = ({ title, value, icon: Icon, trend, decimals = 2 }) => {
-  // format number if it's numeric
-  const formattedValue =
-    typeof value === "number"
-      ? Number.isInteger(value)
-        ? value.toLocaleString() // no decimals for whole numbers
-        : value.toLocaleString(undefined, {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: decimals, // round only if decimal
-          })
-      : value;
+const StatCard = ({ title, value, icon: Icon, trend }) => {
+  const trendNumber =
+    trend === undefined || trend === null ? null : Number(trend);
+  const showTrend = Number.isFinite(trendNumber);
 
   return (
     <Card elevation={0} sx={styles.statCard}>
@@ -26,12 +18,12 @@ const StatCard = ({ title, value, icon: Icon, trend, decimals = 2 }) => {
         <Typography sx={styles.statTitle}>{title}</Typography>
 
         <Box sx={styles.valueRow}>
-          <Typography sx={styles.statValue}>{formattedValue}</Typography>
-          {trend !== undefined && (
+          <Typography sx={styles.statValue}>{value}</Typography>
+          {showTrend && (
             <Chip
-              label={formatPercentage(trend, trend >= 0)}
+              label={`${trendNumber > 0 ? "+" : ""}${trendNumber.toFixed(2)}%`}
               size="small"
-              sx={styles.trendChip(trend)}
+              sx={styles.trendChip(trendNumber)}
             />
           )}
         </Box>
@@ -80,7 +72,7 @@ const styles = {
   },
   statValue: {
     fontWeight: "bold",
-    fontSize: "1.5rem",
+    fontSize: "1.8rem",
     color: "#111827",
   },
   trendChip: (trend) => ({

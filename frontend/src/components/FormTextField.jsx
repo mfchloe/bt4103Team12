@@ -1,4 +1,3 @@
-// custom form text field
 import { TextField, Box } from "@mui/material";
 
 const FormTextField = ({
@@ -9,6 +8,7 @@ const FormTextField = ({
   disabled,
   type = "text",
   htmlInputProps = {},
+  required = true,
 }) => (
   <Box>
     <Box sx={styles.fieldLabel}>{label}</Box>
@@ -18,7 +18,7 @@ const FormTextField = ({
       onChange={onChange}
       type={type}
       slotProps={{ htmlInput: htmlInputProps }}
-      required
+      required={required}
       fullWidth
       sx={styles.textField}
       disabled={disabled}

@@ -15,6 +15,7 @@ import {
   calculateStockStats,
   formatCurrency,
   formatPercentage,
+  formatDate,
 } from "../../utils/mathHelpers";
 
 const POSITIVE_COLOR = "#16a34a";
@@ -25,6 +26,7 @@ const TABLE_HEADERS = [
   { label: "Name", align: "left" },
   { label: "Shares", align: "right" },
   { label: "Buy Price", align: "right" },
+  { label: "Buy Date", align: "right" },
   { label: "Current Price", align: "right" },
   { label: "Total Value", align: "right" },
   { label: "P&L", align: "right" },
@@ -70,6 +72,7 @@ const StockRow = ({ stock, onRemove }) => {
       <TableCell>{stock.name}</TableCell>
       <TableCell align="right">{stock.shares}</TableCell>
       <TableCell align="right">{formatCurrency(stock.buyPrice)}</TableCell>
+      <TableCell align="right">{formatDate(stock.buyDate)}</TableCell>
       <TableCell align="right">{formatCurrency(stock.currentPrice)}</TableCell>
       <TableCell align="right">{formatCurrency(totalValue)}</TableCell>
       <TableCell align="right" sx={{ ...styles.plCell, color: plColor }}>
