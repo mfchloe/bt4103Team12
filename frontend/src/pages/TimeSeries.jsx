@@ -41,29 +41,12 @@ import { formatCurrency } from "../utils/mathHelpers";
 import { useSessionStorageState } from "../hooks/useSessionStorageState";
 import { apiBaseUrl } from "../api/httpClient.js";
 
-<<<<<<< HEAD
-const API_BASE_URL = "http://localhost:8000/api/yfinance";
-const SENTIMENT_API = "http://localhost:8000/api/sentiment/news-sentiment";
-=======
 const API_BASE_URL = `${apiBaseUrl}/api/yfinance`;
->>>>>>> a7384e1471eeebdb885c1284a4db18e076cdd6af
+const SENTIMENT_API = `${apiBaseUrl}/api/sentiment/news-sentiment`;
 const INITIAL_START_DATE = dayjs().subtract(6, "month");
 const INITIAL_START_DATE_STRING = INITIAL_START_DATE.format("YYYY-MM-DD");
 
 const TimeSeries = () => {
-<<<<<<< HEAD
-  // search
-  const [searchInput, setSearchInput] = useState("");
-  const [searchResults, setSearchResults] = useState([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-
-  // selections & date
-  const [selectedStocks, setSelectedStocks] = useState([]);
-  const [startDate, setStartDate] = useState(INITIAL_START_DATE);
-
-  // prices
-  const [chartData, setChartData] = useState([]);
-=======
   const [searchInput, setSearchInput] = useSessionStorageState(
     "time-series:search-input",
     ""
@@ -90,7 +73,6 @@ const TimeSeries = () => {
   );
   const [lastRequestSignature, setLastRequestSignature] =
     useSessionStorageState("time-series:last-request", null);
->>>>>>> a7384e1471eeebdb885c1284a4db18e076cdd6af
   const [loadingSeries, setLoadingSeries] = useState(false);
   const [seriesError, setSeriesError] = useState(null);
 
@@ -218,13 +200,10 @@ const TimeSeries = () => {
       setLoadingSeries(true);
       setSeriesError(null);
       try {
-<<<<<<< HEAD
         const payload = {
           symbols: selectedStocks.map((stock) => stock.symbol),
           startDate: startDate.format("YYYY-MM-DD"),
         };
-=======
->>>>>>> a7384e1471eeebdb885c1284a4db18e076cdd6af
         const response = await fetch(`${API_BASE_URL}/historical-series`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -237,10 +216,8 @@ const TimeSeries = () => {
           );
         }
         const data = await response.json();
-<<<<<<< HEAD
         // FIX: no {success} in backend response
         setChartData(Array.isArray(data.series) ? data.series : []);
-=======
         if (data.success) {
           if (!ignore) {
             setChartData(data.series || []);
@@ -249,7 +226,6 @@ const TimeSeries = () => {
         } else {
           throw new Error("Failed to fetch historical prices.");
         }
->>>>>>> a7384e1471eeebdb885c1284a4db18e076cdd6af
       } catch (error) {
         console.error("Error fetching historical series:", error);
         if (!ignore) {
