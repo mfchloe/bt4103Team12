@@ -27,7 +27,81 @@ const FARDashboard = () => {
   });
   const [selectedAsset, setSelectedAsset] = useState(null);
 
-  const body = useMemo(() => ({ filters }), [filters]);
+  // Convert slider range to categorical investment capacity values
+  // Convert slider range to categorical investment capacity values
+  const convertRangeToCategorical = (min, max) => {
+    const categories = [];
+
+    // CAP_LT30K: < 30,000
+    if (min < 30000) {
+      categories.push("CAP_LT30K");
+    }
+
+    // CAP_30K_80K: 30,000 - 80,000
+    if (min < 80000 && max >= 30000) {
+      categories.push("CAP_30K_80K");
+    }
+
+    // CAP_80K_300K: 80,000 - 300,000
+    if (min < 300000 && max >= 80000) {
+      categories.push("CAP_80K_300K");
+    }
+
+    // CAP_GT300K: > 300,000
+    if (max >= 300000) {
+      categories.push("CAP_GT300K");
+    }
+
+    return categories;
+  };
+
+  // Prepare filters with converted investment capacity
+  const backendFilters = useMemo(() => {
+    const { investmentCapacity, ...otherFilters } = filters;
+
+    // Only add investment_capacity if the range is not the default (0-300000)
+    const isDefaultRange =
+      investmentCapacity?.minimum === 0 &&
+      investmentCapacity?.maximum === 300000;
+
+    const investment_capacity =
+      investmentCapacity && !isDefaultRange
+        ? convertRangeToCategorical(
+            investmentCapacity.minimum,
+            investmentCapacity.maximum
+          )
+        : undefined;
+
+    // Clean up the filters - remove empty arrays and null date ranges
+    const cleanedFilters = {};
+
+    for (const [key, value] of Object.entries(otherFilters)) {
+      if (key === "date_range") {
+        // Only include date_range if start or end is set
+        if (value && (value.start || value.end)) {
+          cleanedFilters[key] = value;
+        }
+      } else if (Array.isArray(value)) {
+        // Only include arrays that have items
+        if (value.length > 0) {
+          cleanedFilters[key] = value;
+        }
+      } else if (value !== null && value !== undefined && value !== "") {
+        cleanedFilters[key] = value;
+      }
+    }
+
+    if (investment_capacity && investment_capacity.length > 0) {
+      cleanedFilters.investment_capacity = investment_capacity;
+    }
+
+    // Debug: Log the filters being sent
+    console.log("Backend filters:", cleanedFilters);
+
+    return cleanedFilters;
+  }, [filters]);
+  // const body = useMemo(() => ({ filters }), [filters]);
+  const body = useMemo(() => ({ filters: backendFilters }), [backendFilters]);
 
   // Core metrics
   const { data: metrics } = useApi("/api/far/metrics", body);

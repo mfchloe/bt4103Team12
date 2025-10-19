@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from pydantic import BaseModel, Field, NonNegativeInt
 
@@ -21,7 +21,7 @@ class FARFilters(BaseModel):
     investor_type: Optional[List[str]] = Field(default=None, description="e.g., Buy-and-Hold, Moderate, Active")
     risk_level: Optional[List[str]] = Field(default=None)
     sectors: Optional[List[str]] = Field(default=None)
-    investment_capacity: Optional[NumericRange] = Field(default=None)
+    investment_capacity: Optional[Union[List[str], NumericRange]] = Field(default=None)
     date_range: Optional[DateRange] = Field(default=None)
     search_query: Optional[str] = Field(default=None)
 
