@@ -28,19 +28,40 @@ import { X } from "lucide-react";
 
 import { CHART_COLORS } from "../constants/colors";
 import { formatCurrency } from "../utils/mathHelpers";
+import { useSessionStorageState } from "../hooks/useSessionStorageState";
+import { apiBaseUrl } from "../api/httpClient.js";
 
-const API_BASE_URL = "http://localhost:8000/api/yfinance";
+const API_BASE_URL = `${apiBaseUrl}/api/yfinance`;
 const INITIAL_START_DATE = dayjs().subtract(6, "month");
+const INITIAL_START_DATE_STRING = INITIAL_START_DATE.format("YYYY-MM-DD");
 
 const TimeSeries = () => {
-  const [searchInput, setSearchInput] = useState("");
+  const [searchInput, setSearchInput] = useSessionStorageState(
+    "time-series:search-input",
+    ""
+  );
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
 
-  const [selectedStocks, setSelectedStocks] = useState([]);
-  const [startDate, setStartDate] = useState(INITIAL_START_DATE);
+  const [selectedStocks, setSelectedStocks] = useSessionStorageState(
+    "time-series:selected-stocks",
+    []
+  );
+  const [startDateRaw, setStartDateRaw] = useSessionStorageState(
+    "time-series:start-date",
+    INITIAL_START_DATE_STRING
+  );
+  const startDate = useMemo(
+    () => (startDateRaw ? dayjs(startDateRaw) : null),
+    [startDateRaw]
+  );
 
-  const [chartData, setChartData] = useState([]);
+  const [chartData, setChartData] = useSessionStorageState(
+    "time-series:chart-data",
+    []
+  );
+  const [lastRequestSignature, setLastRequestSignature] =
+    useSessionStorageState("time-series:last-request", null);
   const [loadingSeries, setLoadingSeries] = useState(false);
   const [seriesError, setSeriesError] = useState(null);
 
@@ -107,9 +128,24 @@ const TimeSeries = () => {
   }, [chartData]);
 
   useEffect(() => {
+    let ignore = false;
+
     const fetchSeries = async () => {
       if (!selectedStocks.length || !hasValidDate) {
-        setChartData([]);
+        if (!ignore) {
+          setChartData([]);
+          setLastRequestSignature(null);
+        }
+        return;
+      }
+
+      const payload = {
+        symbols: selectedStocks.map((stock) => stock.symbol),
+        startDate: startDate.format("YYYY-MM-DD"),
+      };
+      const payloadSignature = JSON.stringify(payload);
+
+      if (lastRequestSignature === payloadSignature && chartData.length) {
         return;
       }
 
@@ -117,11 +153,6 @@ const TimeSeries = () => {
       setSeriesError(null);
 
       try {
-        const payload = {
-          symbols: selectedStocks.map((stock) => stock.symbol),
-          startDate: startDate.format("YYYY-MM-DD"),
-        };
-
         const response = await fetch(`${API_BASE_URL}/historical-series`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -137,21 +168,38 @@ const TimeSeries = () => {
 
         const data = await response.json();
         if (data.success) {
-          setChartData(data.series || []);
+          if (!ignore) {
+            setChartData(data.series || []);
+            setLastRequestSignature(payloadSignature);
+          }
         } else {
           throw new Error("Failed to fetch historical prices.");
         }
       } catch (error) {
         console.error("Error fetching historical series:", error);
-        setSeriesError(error.message || "Failed to load historical prices.");
-        setChartData([]);
+        if (!ignore) {
+          setSeriesError(error.message || "Failed to load historical prices.");
+          setChartData([]);
+          setLastRequestSignature(null);
+        }
       } finally {
-        setLoadingSeries(false);
+        if (!ignore) {
+          setLoadingSeries(false);
+        }
       }
     };
 
     fetchSeries();
-  }, [selectedStocks, startDate, hasValidDate]);
+    return () => {
+      ignore = true;
+    };
+  }, [
+    selectedStocks,
+    startDateRaw,
+    hasValidDate,
+    chartData.length,
+    lastRequestSignature,
+  ]);
 
   const SelectedStocksList = () => {
     if (!selectedStocks.length) return null;
@@ -300,7 +348,13 @@ const TimeSeries = () => {
           <DatePicker
             label="Start Date"
             value={startDate}
-            onChange={(newDate) => setStartDate(newDate)}
+            onChange={(newDate) =>
+              setStartDateRaw(
+                newDate && newDate.isValid()
+                  ? newDate.format("YYYY-MM-DD")
+                  : null
+              )
+            }
             disableFuture
             maxDate={dayjs()}
             slotProps={{

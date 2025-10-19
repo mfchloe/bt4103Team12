@@ -11,9 +11,11 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Button,
 } from "@mui/material";
 import { ChevronLeft, ChevronRight } from "@mui/icons-material";
 import { navItems } from "../constants/navItems";
+import { useAuth } from "../context/AuthContext.jsx";
 
 // subcomponents //
 
@@ -75,8 +77,15 @@ const SidebarNavItem = ({ item, collapsed, isActive, onNavigate }) => {
 const Sidebar = ({ collapsed, setCollapsed }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isAuthenticated, logout } = useAuth();
 
-  const handleNavigation = (path) => navigate(path);
+  const handleNavigation = (path) => {
+    if (path === "/" && !isAuthenticated) {
+      navigate("/login");
+      return;
+    }
+    navigate(path);
+  };
   const toggleCollapse = () => setCollapsed((prev) => !prev);
 
   return (
@@ -104,6 +113,40 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
           />
         ))}
       </List>
+
+      <Box sx={styles.footer}>
+        {isAuthenticated ? (
+          <Button
+            variant="outlined"
+            color="inherit"
+            onClick={() => {
+              logout();
+              navigate("/login");
+            }}
+            sx={{
+              ...styles.footerButton,
+              borderColor: "rgba(255,255,255,0.7)",
+              color: "white",
+              "&:hover": { borderColor: "white" },
+            }}
+          >
+            Log Out
+          </Button>
+        ) : (
+          <Button
+            variant="contained"
+            onClick={() => navigate("/login")}
+            sx={{
+              ...styles.footerButton,
+              bgcolor: "white",
+              color: "#305D9E",
+              "&:hover": { bgcolor: "#f1f5f9" },
+            }}
+          >
+            Log In
+          </Button>
+        )}
+      </Box>
     </Drawer>
   );
 };
@@ -172,5 +215,18 @@ const styles = {
     fontWeight: 500,
     fontSize: "1rem",
     color: "inherit",
+  },
+  footer: {
+    p: 2,
+    borderTop: "1px solid rgba(255,255,255,0.2)",
+    display: "flex",
+    justifyContent: "center",
+  },
+  footerButton: {
+    textTransform: "none",
+    fontWeight: 600,
+    width: "100%",
+    borderRadius: 2,
+    boxShadow: "none",
   },
 };

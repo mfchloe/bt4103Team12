@@ -1,8 +1,9 @@
 // layout component that wraps pages with sidebar
 import React, { useState } from "react";
 import { Box } from "@mui/material";
+import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
-const Layout = ({ children }) => {
+const Layout = () => {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -18,7 +19,7 @@ const Layout = ({ children }) => {
           transition: "margin-left 0.3s ease",
         }}
       >
-        {children}
+        <Outlet />
       </Box>
     </Box>
   );

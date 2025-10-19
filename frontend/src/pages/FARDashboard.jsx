@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Container, Box, Typography } from "@mui/material";
 import PeopleIcon from "@mui/icons-material/People";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
@@ -14,18 +14,37 @@ import { CategoryBarCard } from "../components/FARDashboard/CategoryBarCard";
 import { TopAssetsTable } from "../components/FARDashboard/TopAssetsTable";
 import { ActivityLineChart } from "../components/FARDashboard/ActivityLineChart";
 import { useApi } from "../hooks/useApi";
+import { useSessionStorageState } from "../hooks/useSessionStorageState";
+
+const createDefaultFilters = () => ({
+  customer_type: [],
+  investor_type: [],
+  risk_level: [],
+  sectors: [],
+  investmentCapacity: { minimum: 0, maximum: 300000 },
+  date_range: { start: null, end: null },
+  asset_category: [],
+  search_query: "",
+});
 
 const FARDashboard = () => {
-  const [filters, setFilters] = useState({
-    customer_type: [],
-    investor_type: [],
-    risk_level: [],
-    sectors: [],
-    investmentCapacity: { minimum: 0, maximum: 300000 },
-    date_range: { start: null, end: null },
-    search_query: "",
-  });
-  const [selectedAsset, setSelectedAsset] = useState(null);
+  const [filters, setFilters] = useSessionStorageState(
+    "far-dashboard:filters",
+    createDefaultFilters()
+  );
+  const [selectedAsset, setSelectedAsset] = useSessionStorageState(
+    "far-dashboard:selected-asset",
+    null
+  );
+
+  const hasHydratedFilters = useRef(false);
+
+  useEffect(() => {
+    // Ensure new filter keys are added for users with older sessionStorage
+    if (hasHydratedFilters.current) return;
+    hasHydratedFilters.current = true;
+    setFilters((prev) => ({ ...createDefaultFilters(), ...prev }));
+  }, [setFilters]);
 
   // Convert slider range to categorical investment capacity values
   // Convert slider range to categorical investment capacity values
@@ -142,13 +161,9 @@ const FARDashboard = () => {
 
   const resetFilters = () => {
     setFilters({
+      ...createDefaultFilters(),
       customer_type: ["Mass", "Premium"],
-      investor_type: [],
       risk_level: ["Conservative", "Balanced", "Aggressive"],
-      sectors: [],
-      investmentCapacity: { minimum: 0, maximum: 300000 },
-      date_range: { start: null, end: null },
-      search_query: "",
     });
     setSelectedAsset(null);
   };

@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Box, Typography, Button } from "@mui/material";
-import { TrendingUp, DollarSign, BarChart3 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Box, Typography, Button, CircularProgress, Alert } from "@mui/material";
 
 import PortfolioTable from "../components/home/PortfolioTable";
 import RecommendationsDialog from "../components/home/RecommendationsDialog";
@@ -13,13 +12,19 @@ import {
   calculateTotalReturn,
   calculateSharpeRatio,
 } from "../utils/mathHelpers";
+import { useAuth } from "../context/AuthContext.jsx";
+import { apiBaseUrl } from "../api/httpClient.js";
+import dayjs from "dayjs";
 
-const STOCK_PRICE_API_URL = "http://localhost:8000/api/yfinance/batch";
+const STOCK_PRICE_API_URL = `${apiBaseUrl}/api/yfinance/batch`;
 
 const Home = () => {
   const [portfolio, setPortfolio] = useState([]);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [apiError, setApiError] = useState(null);
   const [showRecommendations, setShowRecommendations] = useState(false);
   const [showAddStock, setShowAddStock] = useState(false);
+  const { authFetch, isAuthenticated } = useAuth();
 
   const portfolioRef = useRef(portfolio);
 
@@ -27,12 +32,54 @@ const Home = () => {
     portfolioRef.current = portfolio;
   }, [portfolio]);
 
+  const mapServerItem = useCallback((item) => ({
+    id: item.id,
+    symbol: item.symbol,
+    name: item.name,
+    shares: item.shares,
+    buyPrice: item.buy_price,
+    buyDate: item.buy_date,
+    currentPrice: item.current_price,
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
+  }), []);
+
   useEffect(() => {
-    if (portfolio.length === 0) return;
+    if (!isAuthenticated) {
+      setPortfolio([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    const loadPortfolio = async () => {
+      setPortfolioLoading(true);
+      setApiError(null);
+      try {
+        const items = await authFetch("/api/portfolio/", { signal: controller.signal });
+        setPortfolio(items.map(mapServerItem));
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setApiError(error.message || "Failed to load portfolio.");
+      } finally {
+        if (!controller.signal.aborted) {
+          setPortfolioLoading(false);
+        }
+      }
+    };
+
+    loadPortfolio();
+    return () => controller.abort();
+  }, [authFetch, isAuthenticated, mapServerItem]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (!portfolioRef.current.length) return;
 
     const refreshPrices = async () => {
       try {
         const symbols = portfolioRef.current.map((stock) => stock.symbol);
+        if (!symbols.length) return;
+
         const response = await fetch(STOCK_PRICE_API_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -40,17 +87,28 @@ const Home = () => {
         });
 
         const data = await response.json();
-        if (data.success) {
-          setPortfolio((prevPortfolio) =>
-            prevPortfolio.map((stock) => ({
-              ...stock,
-              currentPrice:
-                data.prices[stock.symbol] !== undefined
-                  ? data.prices[stock.symbol]
-                  : stock.currentPrice,
-            }))
+        if (!data.success) return;
+
+        const pendingUpdates = [];
+        setPortfolio((prevPortfolio) =>
+          prevPortfolio.map((stock) => {
+            const updatedPrice = data.prices[stock.symbol];
+            if (updatedPrice === undefined) {
+              return stock;
+            }
+            pendingUpdates.push({ id: stock.id, current_price: updatedPrice });
+            return { ...stock, currentPrice: updatedPrice };
+          })
+        );
+
+        pendingUpdates.forEach(({ id, current_price }) => {
+          authFetch(`/api/portfolio/${id}`, {
+            method: "PUT",
+            body: { current_price },
+          }).catch((error) =>
+            console.warn(`Failed to sync price for item ${id}`, error)
           );
-        }
+        });
       } catch (error) {
         console.error("Failed to refresh prices:", error);
       }
@@ -59,25 +117,51 @@ const Home = () => {
     refreshPrices();
     const interval = setInterval(refreshPrices, 60 * 60 * 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [authFetch, isAuthenticated, portfolio.length]);
 
   const totalValue = calculateTotalValue(portfolio);
   const totalPL = calculateTotalPL(portfolio);
   const totalReturn = calculateTotalReturn(portfolio);
   const sharpeRatio = calculateSharpeRatio(portfolio);
 
-  const handleAddStock = (stock) => {
-    setPortfolio((prev) => [...prev, { ...stock, id: Date.now() }]);
-  };
+  const handleAddStock = useCallback(
+    async (stock) => {
+      const payload = {
+        symbol: stock.symbol?.toUpperCase(),
+        name: stock.name,
+        shares: Number(stock.shares),
+        buy_price: Number(stock.buyPrice),
+        buy_date: stock.buyDate
+          ? dayjs(stock.buyDate).format("YYYY-MM-DD")
+          : null,
+        current_price:
+          stock.currentPrice !== undefined ? Number(stock.currentPrice) : null,
+      };
 
-  const handleRemoveStock = (id) => {
-    setPortfolio((prev) => prev.filter((stock) => stock.id !== id));
-  };
+      const created = await authFetch("/api/portfolio/", {
+        method: "POST",
+        body: payload,
+      });
+      setPortfolio((prev) => [...prev, mapServerItem(created)]);
+    },
+    [authFetch, mapServerItem]
+  );
 
-  const handleAddRecommendation = (stock) => {
-    handleAddStock(stock);
-    setShowRecommendations(false);
-  };
+  const handleRemoveStock = useCallback(
+    async (id) => {
+      await authFetch(`/api/portfolio/${id}`, { method: "DELETE" });
+      setPortfolio((prev) => prev.filter((stock) => stock.id !== id));
+    },
+    [authFetch]
+  );
+
+  const handleAddRecommendation = useCallback(
+    async (stock) => {
+      await handleAddStock(stock);
+      setShowRecommendations(false);
+    },
+    [handleAddStock]
+  );
 
   return (
     <Box sx={styles.container}>
@@ -86,11 +170,23 @@ const Home = () => {
           My Portfolio
         </Typography>
 
-        <PortfolioTable
-          portfolio={portfolio}
-          onRemove={handleRemoveStock}
-          onAddStock={() => setShowAddStock(true)}
-        />
+        {apiError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {apiError}
+          </Alert>
+        )}
+
+        {portfolioLoading ? (
+          <Box sx={styles.loader}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <PortfolioTable
+            portfolio={portfolio}
+            onRemove={handleRemoveStock}
+            onAddStock={() => setShowAddStock(true)}
+          />
+        )}
 
         <Box sx={styles.buttonsContainer}>
           <Button
@@ -101,7 +197,7 @@ const Home = () => {
           </Button>
           <Button
             onClick={() => setShowRecommendations(true)}
-            disabled={portfolio.length === 0}
+            disabled={portfolioLoading || portfolio.length === 0}
             sx={[styles.button, styles.reccoButton]}
           >
             Get Recommendations
@@ -179,5 +275,14 @@ const styles = {
     fontStyle: "italic",
     textAlign: "center",
     py: 6,
+  },
+  loader: {
+    bgcolor: "white",
+    borderRadius: 3,
+    boxShadow: 1,
+    py: 6,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
 };
