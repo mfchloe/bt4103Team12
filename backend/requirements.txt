@@ -1,7 +1,18 @@
 fastapi
 pandas
 pydantic
+pydantic-settings
 pyarrow
 uvicorn
 yfinance
+<<<<<<< HEAD
 nltk
+=======
+sqlalchemy
+passlib[bcrypt]
+python-jose[cryptography]
+python-dotenv
+google-auth
+httpx
+PyJWT[crypto]
+>>>>>>> a7384e1471eeebdb885c1284a4db18e076cdd6af

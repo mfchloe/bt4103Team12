@@ -1,8 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+<<<<<<< HEAD
 from controllers import yfinance_controller
 from controllers import far_controller
 from controllers import sentiment_controller
+=======
+from controllers import auth_controller, far_controller, portfolio_controller, yfinance_controller
+from database import Base, engine
+>>>>>>> a7384e1471eeebdb885c1284a4db18e076cdd6af
 import logging
 import uvicorn
 import nltk
@@ -41,9 +46,15 @@ def startup_event():
 
 # ROUTERS HERE
 # include routers
+app.include_router(auth_controller.router)
+app.include_router(portfolio_controller.router)
 app.include_router(yfinance_controller.router)
 app.include_router(far_controller.router)
 app.include_router(sentiment_controller.router)
+
+@app.on_event("startup")
+def on_startup():
+    Base.metadata.create_all(bind=engine)
 
 @app.get("/")
 async def root():

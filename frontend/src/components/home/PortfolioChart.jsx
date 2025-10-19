@@ -19,13 +19,17 @@ const CHART_CONFIG = {
 };
 
 const transformPortfolioToChartData = (portfolio) => {
-  return portfolio.map((stock) => ({
-    name: stock.symbol,
-    value: stock.shares * stock.currentPrice,
-  }));
+  return portfolio
+    .filter((stock) => stock.currentPrice !== null && stock.currentPrice !== undefined)
+    .map((stock) => ({
+      name: stock.symbol,
+      value: Number(stock.shares) * Number(stock.currentPrice || 0),
+    }))
+    .filter((item) => Number.isFinite(item.value) && item.value > 0);
 };
 
 const calculatePercentage = (value, total) => {
+  if (!total) return "0.0";
   return ((value / total) * 100).toFixed(1);
 };
 
@@ -56,6 +60,13 @@ const PortfolioChart = ({ portfolio }) => {
   }
 
   const chartData = transformPortfolioToChartData(portfolio);
+  if (chartData.length === 0) {
+    return (
+      <Typography sx={{ color: "#6b7280", textAlign: "center", py: 4 }}>
+        Add stocks with a known current price to display allocation.
+      </Typography>
+    );
+  }
 
   return (
     <Box sx={styles.container}>

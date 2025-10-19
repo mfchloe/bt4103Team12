@@ -23,8 +23,9 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
 import FormTextField from "../FormTextField";
+import { apiBaseUrl } from "../../api/httpClient.js";
 
-const API_BASE_URL = "http://localhost:8000/api/yfinance";
+const API_BASE_URL = `${apiBaseUrl}/api/yfinance`;
 
 const INITIAL_FORM_STATE = {
   symbol: "",
@@ -285,7 +286,7 @@ const AddStockDialog = ({ open, onClose, onAdd }) => {
         console.warn(`Could not fetch price for ${symbol}:`, error);
       }
 
-      onAdd({
+      await onAdd({
         symbol,
         name: formData.name,
         shares: parseFloat(formData.shares),

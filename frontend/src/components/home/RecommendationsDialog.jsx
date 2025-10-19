@@ -60,21 +60,29 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
     (rec) => !currentPortfolio.some((stock) => stock.symbol === rec.symbol)
   );
 
-  const handleAddStock = (stock) => {
-    onAdd({
-      symbol: stock.symbol,
-      name: stock.name,
-      shares: 1,
-      buyPrice: stock.currentPrice,
-      buyDate: dayjs().format("YYYY-MM-DD"),
-      currentPrice: stock.currentPrice,
-    });
+  const handleAddStock = async (stock) => {
+    try {
+      await onAdd({
+        symbol: stock.symbol,
+        name: stock.name,
+        shares: 1,
+        buyPrice: stock.currentPrice,
+        buyDate: dayjs().format("YYYY-MM-DD"),
+        currentPrice: stock.currentPrice,
+      });
 
-    setToast({
-      open: true,
-      message: `${stock.symbol} has been added to your portfolio`,
-      symbol: stock.symbol,
-    });
+      setToast({
+        open: true,
+        message: `${stock.symbol} has been added to your portfolio`,
+        symbol: stock.symbol,
+      });
+    } catch (error) {
+      setToast({
+        open: true,
+        message: error.message || "Failed to add stock",
+        symbol: stock.symbol,
+      });
+    }
   };
 
   const handleCloseToast = () => {
