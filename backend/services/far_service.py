@@ -130,6 +130,102 @@ def reset_cache() -> None:
         pass
 
 
+# def _parse_capacity_to_value(capacity_str: Optional[str]) -> Optional[float]:
+#     if not isinstance(capacity_str, str):
+#         return None
+#     import re
+#     s = capacity_str.replace("€", "").replace(",", "").replace("_", " ").strip().lower()
+#     try:
+#         # Extract numeric tokens with optional k/m suffix, e.g., 30k, 300k, 1m
+#         tokens = re.findall(r"(\d+)\s*([km]?)", s)
+#         nums = []
+#         for num, suf in tokens:
+#             val = float(num)
+#             if suf == "k":
+#                 val *= 1_000
+#             elif suf == "m":
+#                 val *= 1_000_000
+#             nums.append(val)
+#         if nums:
+#             return max(nums)  # use upper bound for range bands
+#         # Handle textual hints
+#         if "lt" in s and tokens:
+#             return float(nums[0])
+#         if "+" in s and tokens:
+#             return float(nums[0])
+#         return None
+#     except Exception:
+#         return None
+
+
+# def _apply_filters(df: pd.DataFrame, filters: dict, dataset_type: str = "customer") -> pd.DataFrame:
+#     if df is None or df.empty:
+#         return df.copy()
+
+#     out = df.copy()
+
+#     # Map incoming filter keys to dataset columns
+#     mapping = {}
+#     if dataset_type == "customer":
+#         mapping = {
+#             "customer_type": ["customerType"],
+#             "investor_type": ["investor_type"],
+#             "risk_level": ["riskLevel"],
+#             # "investment_capacity": ['investmentCapacity']
+#         }
+#         sector_col = "preferred_sector"
+#     elif dataset_type == "asset":
+#         mapping = {
+#             "investor_type": ["investor_type"],  # optional
+#         }
+#         sector_col = "sector"
+#     else:
+#         sector_col = None
+
+#     # Categorical filters
+#     for key, candidates in mapping.items():
+#         values = (filters or {}).get(key)
+#         if values:
+#             present_col = next((c for c in candidates if c in out.columns), None)
+#             if present_col:
+#                 values_l = set(str(v).lower() for v in values)
+#                 col_l = out[present_col].astype(str).str.lower()
+#                 out = out[col_l.isin(values_l)]
+
+#     # Sector filter
+#     sectors = (filters or {}).get("sectors")
+#     if sectors and sector_col and sector_col in out.columns:
+#         sectors_l = set(str(v).lower() for v in sectors)
+#         out = out[out[sector_col].astype(str).str.lower().isin(sectors_l)]
+
+#     # Numeric filter: investmentCapacity
+#     capacity = (filters or {}).get("investmentCapacity")
+#     if capacity and "investmentCapacity" in out.columns:
+#         minimum = capacity.get("minimum")
+#         maximum = capacity.get("maximum")
+#         parsed = out["investmentCapacity"].map(_parse_capacity_to_value)
+#         mask = pd.Series(True, index=out.index)
+#         if minimum is not None:
+#             mask &= parsed >= minimum
+#         if maximum is not None:
+#             mask &= parsed <= maximum
+#         mask = mask.fillna(False)
+#         out = out[mask]
+
+#     # Date filter
+#     date_range = (filters or {}).get("date_range")
+#     date_col = next((c for c in ["date", "txn_date", "transaction_date", "timestamp", "lastQuestionnaireDate"] if c in out.columns), None)
+#     if date_range and date_col:
+#         start = date_range.get("start")
+#         end = date_range.get("end")
+#         if start:
+#             out = out[pd.to_datetime(out[date_col], errors="coerce") >= pd.to_datetime(start)]
+#         if end:
+#             out = out[pd.to_datetime(out[date_col], errors="coerce") <= pd.to_datetime(end)]
+
+#     return out
+
+# updated
 def _parse_capacity_to_value(capacity_str: Optional[str]) -> Optional[float]:
     if not isinstance(capacity_str, str):
         return None
@@ -158,12 +254,36 @@ def _parse_capacity_to_value(capacity_str: Optional[str]) -> Optional[float]:
         return None
 
 
+def _capacity_matches_filter(capacity_str: str, filter_values: list) -> bool:
+    """
+    Check if a capacity string matches any of the filter values.
+    Groups Predicted_ versions with actual versions.
+    
+    Examples:
+        capacity_str: "CAP_LT30K" or "Predicted_CAP_LT30K"
+        filter_values: ["CAP_LT30K"]
+        Returns: True for both cases
+    """
+    if not isinstance(capacity_str, str):
+        return False
+    
+    # Normalize: remove "Predicted_" prefix if present
+    normalized = capacity_str.replace("Predicted_", "").upper()
+    
+    # Check if normalized version matches any filter value
+    for filter_val in filter_values:
+        if filter_val.upper() in normalized:
+            return True
+    
+    return False
+
+
 def _apply_filters(df: pd.DataFrame, filters: dict, dataset_type: str = "customer") -> pd.DataFrame:
     if df is None or df.empty:
         return df.copy()
-
+    
     out = df.copy()
-
+    
     # Map incoming filter keys to dataset columns
     mapping = {}
     if dataset_type == "customer":
@@ -171,7 +291,6 @@ def _apply_filters(df: pd.DataFrame, filters: dict, dataset_type: str = "custome
             "customer_type": ["customerType"],
             "investor_type": ["investor_type"],
             "risk_level": ["riskLevel"],
-            # "investment_capacity": ['investmentCapacity']
         }
         sector_col = "preferred_sector"
     elif dataset_type == "asset":
@@ -181,7 +300,7 @@ def _apply_filters(df: pd.DataFrame, filters: dict, dataset_type: str = "custome
         sector_col = "sector"
     else:
         sector_col = None
-
+    
     # Categorical filters
     for key, candidates in mapping.items():
         values = (filters or {}).get(key)
@@ -191,27 +310,22 @@ def _apply_filters(df: pd.DataFrame, filters: dict, dataset_type: str = "custome
                 values_l = set(str(v).lower() for v in values)
                 col_l = out[present_col].astype(str).str.lower()
                 out = out[col_l.isin(values_l)]
-
+    
     # Sector filter
     sectors = (filters or {}).get("sectors")
     if sectors and sector_col and sector_col in out.columns:
         sectors_l = set(str(v).lower() for v in sectors)
         out = out[out[sector_col].astype(str).str.lower().isin(sectors_l)]
-
-    # Numeric filter: investmentCapacity
-    capacity = (filters or {}).get("investmentCapacity")
-    if capacity and "investmentCapacity" in out.columns:
-        minimum = capacity.get("minimum")
-        maximum = capacity.get("maximum")
-        parsed = out["investmentCapacity"].map(_parse_capacity_to_value)
-        mask = pd.Series(True, index=out.index)
-        if minimum is not None:
-            mask &= parsed >= minimum
-        if maximum is not None:
-            mask &= parsed <= maximum
-        mask = mask.fillna(False)
+    
+    # Investment Capacity filter (categorical)
+    capacity_filters = (filters or {}).get("investment_capacity")
+    if capacity_filters and "investmentCapacity" in out.columns:
+        # Use categorical matching that groups Predicted_ with actual
+        mask = out["investmentCapacity"].apply(
+            lambda x: _capacity_matches_filter(x, capacity_filters)
+        )
         out = out[mask]
-
+    
     # Date filter
     date_range = (filters or {}).get("date_range")
     date_col = next((c for c in ["date", "txn_date", "transaction_date", "timestamp", "lastQuestionnaireDate"] if c in out.columns), None)
@@ -222,10 +336,8 @@ def _apply_filters(df: pd.DataFrame, filters: dict, dataset_type: str = "custome
             out = out[pd.to_datetime(out[date_col], errors="coerce") >= pd.to_datetime(start)]
         if end:
             out = out[pd.to_datetime(out[date_col], errors="coerce") <= pd.to_datetime(end)]
-
+    
     return out
-
-
 
 def get_metrics(filters: dict) -> dict:
     dfs = load_dataframes()

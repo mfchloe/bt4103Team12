@@ -91,20 +91,29 @@ export const FilterSidebar = ({
               Investor Type
             </Typography>
             <FormGroup>
-              {["Buy-and-Hold", "Moderate Trader", "Active Trader"].map(
-                (type) => (
-                  <FormControlLabel
-                    key={type}
-                    control={
-                      <Checkbox
-                        checked={(filters.investor_type || []).includes(type)}
-                        onChange={() => toggleFromSet("investor_type", type)}
-                        size="small"
-                      />
-                    }
-                    label={<Typography variant="body2">{type}</Typography>}
-                  />
-                )
+              {["buy_and_hold", "moderate_trader", "active_trader"].map(
+                (type) => {
+                  const displayLabel = type
+                    .split("_")
+                    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(" ");
+
+                  return (
+                    <FormControlLabel
+                      key={type}
+                      control={
+                        <Checkbox
+                          checked={(filters.investor_type || []).includes(type)}
+                          onChange={() => toggleFromSet("investor_type", type)}
+                          size="small"
+                        />
+                      }
+                      label={
+                        <Typography variant="body2">{displayLabel}</Typography>
+                      }
+                    />
+                  );
+                }
               )}
             </FormGroup>
           </Box>
@@ -143,8 +152,8 @@ export const FilterSidebar = ({
             <Box sx={{ px: 1, pt: 2 }}>
               <Slider
                 value={[
-                  filters.investment_capacity?.minimum ?? 0,
-                  filters.investment_capacity?.maximum ?? 300000,
+                  filters.investmentCapacity?.minimum ?? 0,
+                  filters.investmentCapacity?.maximum ?? 300000,
                 ]}
                 min={0}
                 max={300000}
@@ -152,7 +161,7 @@ export const FilterSidebar = ({
                 onChange={(_, v) =>
                   setFilters((f: any) => ({
                     ...f,
-                    investment_capacity: {
+                    investmentCapacity: {
                       minimum: (v as number[])[0],
                       maximum: (v as number[])[1],
                     },
@@ -165,19 +174,17 @@ export const FilterSidebar = ({
                 sx={{ display: "flex", justifyContent: "space-between", mt: 1 }}
               >
                 <Typography variant="caption" color="text.secondary">
-                  €
-                  {(filters.investment_capacity?.minimum ?? 0).toLocaleString()}
+                  €{(filters.investmentCapacity?.minimum ?? 0).toLocaleString()}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   €
                   {(
-                    filters.investment_capacity?.maximum ?? 300000
+                    filters.investmentCapacity?.maximum ?? 300000
                   ).toLocaleString()}
                 </Typography>
               </Box>
             </Box>
           </Box>
-
           <Divider />
 
           <Box>
