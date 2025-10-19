@@ -8,6 +8,10 @@ import {
   TextField,
   Typography,
   Alert,
+  Grid,
+  Link as MuiLink,
+  Tooltip as MuiTooltip,
+  IconButton,
 } from "@mui/material";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
@@ -24,28 +28,81 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import dayjs from "dayjs";
-import { X } from "lucide-react";
+import {
+  X,
+  ExternalLink,
+  TrendingUp,
+  TrendingDown,
+  Minus as MinusIcon,
+} from "lucide-react";
 
 import { CHART_COLORS } from "../constants/colors";
 import { formatCurrency } from "../utils/mathHelpers";
 
 const API_BASE_URL = "http://localhost:8000/api/yfinance";
+const SENTIMENT_API = "http://localhost:8000/api/sentiment/news-sentiment";
 const INITIAL_START_DATE = dayjs().subtract(6, "month");
 
 const TimeSeries = () => {
+  // search
   const [searchInput, setSearchInput] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
 
+  // selections & date
   const [selectedStocks, setSelectedStocks] = useState([]);
   const [startDate, setStartDate] = useState(INITIAL_START_DATE);
 
+  // prices
   const [chartData, setChartData] = useState([]);
   const [loadingSeries, setLoadingSeries] = useState(false);
   const [seriesError, setSeriesError] = useState(null);
 
+  // sentiments
+  const [sentiments, setSentiments] = useState({});
+  const [sentLoading, setSentLoading] = useState(false);
+  const [sentError, setSentError] = useState(null);
+
   const hasValidDate = startDate && startDate.isValid();
 
+  // ---------- helpers (JSX-safe) ----------
+  const colorForSymbol = useCallback(
+    (symbol) => {
+      if (!selectedStocks.length) return "#999999";
+      const idx = selectedStocks.findIndex((s) => s.symbol === symbol);
+      return CHART_COLORS[idx % CHART_COLORS.length];
+    },
+    [selectedStocks]
+  );
+
+  const sentimentColor = (label) => {
+    if (label === "Positive") return "#16a34a"; // green
+    if (label === "Negative") return "#dc2626"; // red
+    return "#6b7280"; // gray
+  };
+
+  const scoreColor = (score100) => {
+    if (score100 > 30) return "#16a34a";
+    if (score100 < -30) return "#dc2626";
+    return "#6b7280";
+  };
+
+  const DirectionIcon = ({ dir }) => {
+    if (dir === "up") return <TrendingUp size={18} />;
+    if (dir === "down") return <TrendingDown size={18} />;
+    return <MinusIcon size={18} />;
+  };
+
+  const formatPubDate = (iso) => {
+    if (!iso) return "";
+    try {
+      return dayjs(iso).format("YYYY-MM-DD");
+    } catch {
+      return "";
+    }
+  };
+
+  // ---------- search ----------
   const handleSearchChange = useCallback(async (query) => {
     if (!query || query.trim().length === 0) {
       setSearchResults([]);
@@ -57,12 +114,9 @@ const TimeSeries = () => {
       const response = await fetch(
         `${API_BASE_URL}/search?q=${encodeURIComponent(query)}&limit=10`
       );
+      // FIX: your backend doesn't return {success}; just use results array
       const data = await response.json();
-      if (data.success) {
-        setSearchResults(data.results);
-      } else {
-        setSearchResults([]);
-      }
+      setSearchResults(Array.isArray(data.results) ? data.results : []);
     } catch (error) {
       console.error("Error searching stocks:", error);
       setSearchResults([]);
@@ -75,9 +129,7 @@ const TimeSeries = () => {
     if (!stock) return;
     setSelectedStocks((prev) => {
       const exists = prev.some((item) => item.symbol === stock.symbol);
-      if (exists) {
-        return prev;
-      }
+      if (exists) return prev;
       return [...prev, stock];
     });
     setSearchInput("");
@@ -85,62 +137,54 @@ const TimeSeries = () => {
   };
 
   const handleRemoveStock = (symbol) => {
-    setSelectedStocks((prev) => prev.filter((stock) => stock.symbol !== symbol));
+    setSelectedStocks((prev) =>
+      prev.filter((stock) => stock.symbol !== symbol)
+    );
   };
 
+  // ---------- transform chart data ----------
   const transformedChartData = useMemo(() => {
     if (!chartData || !chartData.length) return [];
-
     const dateMap = new Map();
     chartData.forEach(({ symbol, prices }) => {
-      prices.forEach(({ date, price }) => {
-        if (!dateMap.has(date)) {
-          dateMap.set(date, { date });
-        }
+      (prices || []).forEach(({ date, price }) => {
+        if (!dateMap.has(date)) dateMap.set(date, { date });
         dateMap.get(date)[symbol] = price;
       });
     });
-
     return Array.from(dateMap.values()).sort(
       (a, b) => new Date(a.date) - new Date(b.date)
     );
   }, [chartData]);
 
+  // ---------- fetch price series ----------
   useEffect(() => {
     const fetchSeries = async () => {
       if (!selectedStocks.length || !hasValidDate) {
         setChartData([]);
         return;
       }
-
       setLoadingSeries(true);
       setSeriesError(null);
-
       try {
         const payload = {
           symbols: selectedStocks.map((stock) => stock.symbol),
           startDate: startDate.format("YYYY-MM-DD"),
         };
-
         const response = await fetch(`${API_BASE_URL}/historical-series`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
-
         if (!response.ok) {
-          const errorPayload = await response.json();
+          const errorPayload = await response.json().catch(() => ({}));
           throw new Error(
             errorPayload?.detail || "Failed to fetch historical prices."
           );
         }
-
         const data = await response.json();
-        if (data.success) {
-          setChartData(data.series || []);
-        } else {
-          throw new Error("Failed to fetch historical prices.");
-        }
+        // FIX: no {success} in backend response
+        setChartData(Array.isArray(data.series) ? data.series : []);
       } catch (error) {
         console.error("Error fetching historical series:", error);
         setSeriesError(error.message || "Failed to load historical prices.");
@@ -149,13 +193,48 @@ const TimeSeries = () => {
         setLoadingSeries(false);
       }
     };
-
     fetchSeries();
   }, [selectedStocks, startDate, hasValidDate]);
 
+  // ---------- fetch sentiments ----------
+  useEffect(() => {
+    const fetchSentiments = async () => {
+      if (!selectedStocks.length) {
+        setSentiments({});
+        return;
+      }
+      setSentLoading(true);
+      setSentError(null);
+      try {
+        const payload = {
+          symbols: selectedStocks.map((s) => s.symbol),
+          max_headlines_per_symbol: 5,
+        };
+        const resp = await fetch(SENTIMENT_API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err?.detail || "Failed to fetch sentiments");
+        }
+        const data = await resp.json();
+        setSentiments(data.sentiments || {});
+      } catch (e) {
+        console.error(e);
+        setSentError(e.message || "Failed to load sentiments.");
+        setSentiments({});
+      } finally {
+        setSentLoading(false);
+      }
+    };
+    fetchSentiments();
+  }, [selectedStocks]);
+
+  // ---------- sub-components ----------
   const SelectedStocksList = () => {
     if (!selectedStocks.length) return null;
-
     return (
       <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1 }}>
         {selectedStocks.map((stock, index) => (
@@ -185,7 +264,6 @@ const TimeSeries = () => {
         </Box>
       );
     }
-
     if (loadingSeries) {
       return (
         <Box sx={styles.placeholderBox}>
@@ -193,7 +271,6 @@ const TimeSeries = () => {
         </Box>
       );
     }
-
     if (seriesError) {
       return (
         <Box sx={styles.placeholderBox}>
@@ -201,7 +278,6 @@ const TimeSeries = () => {
         </Box>
       );
     }
-
     if (!transformedChartData.length) {
       return (
         <Box sx={styles.placeholderBox}>
@@ -211,7 +287,6 @@ const TimeSeries = () => {
         </Box>
       );
     }
-
     return (
       <ResponsiveContainer width="100%" height={400}>
         <LineChart data={transformedChartData}>
@@ -238,6 +313,138 @@ const TimeSeries = () => {
     );
   };
 
+  const SentimentCard = ({ sym, data }) => {
+    const stripe = colorForSymbol(sym);
+    const badgeColor = sentimentColor(data.summary_label);
+    const picked = data.picked_headline;
+
+    return (
+      <Paper
+        elevation={0}
+        sx={{
+          border: "1px solid #e5e7eb",
+          borderRadius: 2,
+          overflow: "hidden",
+          transition: "box-shadow 0.2s ease",
+          "&:hover": { boxShadow: "0px 6px 20px rgba(0,0,0,0.08)" },
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+        }}
+      >
+        {/* Header */}
+        <Box sx={{ display: "flex", alignItems: "center", p: 2, gap: 1 }}>
+          <Box
+            sx={{ width: 8, height: 28, borderRadius: 2, bgcolor: stripe }}
+          />
+          <Typography sx={{ fontWeight: 800, letterSpacing: 0.5 }}>
+            {sym}
+          </Typography>
+          <Box sx={{ flex: 1 }} />
+          <Box
+            sx={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 0.5,
+              px: 1,
+              py: 0.5,
+              borderRadius: 999,
+              bgcolor: `${badgeColor}1A`,
+              color: badgeColor,
+              fontWeight: 700,
+              fontSize: 12,
+            }}
+          >
+            <DirectionIcon dir={data.direction} />
+            {data.summary_label}
+          </Box>
+        </Box>
+
+        {/* Content */}
+        <Box
+          sx={{
+            px: 2,
+            pb: 2,
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <Typography sx={{ color: "#6b7280", fontSize: 12, mb: 0.5 }}>
+            Sentiment Score:
+          </Typography>
+          <Typography
+            sx={{
+              fontWeight: 900,
+              fontSize: 28,
+              lineHeight: 1.1,
+              color: scoreColor(data.summary_score100),
+              mb: 1.5,
+              minHeight: "2.5em",
+            }}
+          >
+            {data.summary_score100}
+          </Typography>
+
+          {picked ? (
+            <>
+              <Typography
+                sx={{
+                  fontSize: 14,
+                  fontWeight: 600,
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                  mb: 1,
+                  minHeight: "2.8em",
+                  flex: 1,
+                }}
+                title={picked.title}
+              >
+                {picked.title}
+              </Typography>
+
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  color: "#6b7280",
+                  fontSize: 12,
+                }}
+              >
+                <span>{picked.source || "—"}</span>
+                <span>•</span>
+                <span>{formatPubDate(picked.published_at)}</span>
+                <Box sx={{ flex: 1 }} />
+                {picked.url && (
+                  <MuiTooltip title="Read more">
+                    <IconButton
+                      size="small"
+                      component={MuiLink}
+                      href={picked.url}
+                      target="_blank"
+                      rel="noopener"
+                      aria-label="Read more"
+                    >
+                      <ExternalLink size={16} />
+                    </IconButton>
+                  </MuiTooltip>
+                )}
+              </Box>
+            </>
+          ) : (
+            <Typography sx={{ color: "#9ca3af", fontStyle: "italic" }}>
+              No recent headlines found.
+            </Typography>
+          )}
+        </Box>
+      </Paper>
+    );
+  };
+
+  // ---------- render ----------
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
       <Box sx={styles.pageContainer}>
@@ -245,11 +452,11 @@ const TimeSeries = () => {
           Time Series Analysis
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-          Compare historical closing prices across multiple stocks. Select the
-          companies you want to track and choose a start date to explore their
-          performance over time.
+          Compare historical closing prices and scan recent news sentiment at a
+          glance.
         </Typography>
 
+        {/* Controls */}
         <Paper sx={styles.controlsCard}>
           <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
             1. Search & Add Stocks
@@ -261,9 +468,7 @@ const TimeSeries = () => {
             inputValue={searchInput}
             onInputChange={(_, newValue, reason) => {
               setSearchInput(newValue);
-              if (reason === "input") {
-                handleSearchChange(newValue);
-              }
+              if (reason === "input") handleSearchChange(newValue);
             }}
             onChange={handleAddStock}
             getOptionLabel={(option) => `${option.symbol} - ${option.name}`}
@@ -294,7 +499,10 @@ const TimeSeries = () => {
           />
           <SelectedStocksList />
 
-          <Typography variant="subtitle1" sx={{ mt: 4, mb: 2, fontWeight: 600 }}>
+          <Typography
+            variant="subtitle1"
+            sx={{ mt: 4, mb: 2, fontWeight: 600 }}
+          >
             2. Choose Start Date
           </Typography>
           <DatePicker
@@ -303,20 +511,69 @@ const TimeSeries = () => {
             onChange={(newDate) => setStartDate(newDate)}
             disableFuture
             maxDate={dayjs()}
-            slotProps={{
-              textField: {
-                fullWidth: true,
-              },
-            }}
+            slotProps={{ textField: { fullWidth: true } }}
           />
         </Paper>
 
+        {/* Chart - Full Width */}
         <Paper sx={styles.chartCard}>
           <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
             Price History
           </Typography>
           <ChartContainer />
         </Paper>
+
+        {/* Sentiment - 2 Column Grid */}
+        <Box sx={{ mt: 4 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+            Sentiment
+          </Typography>
+
+          {!selectedStocks.length && (
+            <Box sx={styles.placeholderBox}>
+              <Typography variant="body1" color="text.secondary">
+                Add stocks to view sentiment cards.
+              </Typography>
+            </Box>
+          )}
+
+          {sentError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {sentError}
+            </Alert>
+          )}
+
+          {sentLoading && (
+            <Box sx={styles.placeholderBox}>
+              <CircularProgress />
+            </Box>
+          )}
+
+          {!sentLoading && !sentError && selectedStocks.length > 0 && (
+            <Grid container spacing={3}>
+              {selectedStocks.map((s) => {
+                const data = sentiments?.[s.symbol] || {
+                  summary_label: "Neutral",
+                  summary_score100: 0,
+                  direction: "flat",
+                  picked_headline: null,
+                  headlines: [],
+                };
+                return (
+                  <Grid
+                    item
+                    xs={12}
+                    md={6}
+                    key={s.symbol}
+                    sx={{ display: "flex" }}
+                  >
+                    <SentimentCard sym={s.symbol} data={data} />
+                  </Grid>
+                );
+              })}
+            </Grid>
+          )}
+        </Box>
       </Box>
     </LocalizationProvider>
   );
