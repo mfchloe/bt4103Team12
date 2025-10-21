@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Box, Typography, Button, CircularProgress, Alert } from "@mui/material";
 
 import PortfolioTable from "../components/home/PortfolioTable";
@@ -25,6 +26,7 @@ const Home = () => {
   const [showRecommendations, setShowRecommendations] = useState(false);
   const [showAddStock, setShowAddStock] = useState(false);
   const { authFetch, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
 
   const portfolioRef = useRef(portfolio);
 
@@ -166,9 +168,18 @@ const Home = () => {
   return (
     <Box sx={styles.container}>
       <Box sx={{ maxWidth: 1200, mx: "auto" }}>
-        <Typography variant="h4" sx={styles.header}>
-          My Portfolio
-        </Typography>
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
+          <Typography variant="h4" sx={styles.header}>
+            My Portfolio
+          </Typography>
+          <Button
+            onClick={() => navigate("/transactions")}
+            sx={styles.txButtonTop}
+            variant="contained"
+          >
+            My Transactions
+          </Button>
+        </Box>
 
         {apiError && (
           <Alert severity="error" sx={{ mb: 2 }}>
