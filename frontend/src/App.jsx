@@ -8,6 +8,7 @@ import TimeSeries from "./pages/TimeSeries";
 import FARDashboard from "./pages/FARDashboard";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login.jsx";
+import Transactions from "./pages/Transactions.jsx";
 
 const App = () => {
   return (
@@ -25,8 +26,9 @@ const App = () => {
           <Route path="/timeseries" element={<TimeSeries />} />
           <Route path="/far-dashboard" element={<FARDashboard />} />
           <Route path="*" element={<NotFound />} />
-        </Route>
-        <Route path="/login" element={<Login />} />
+          <Route path="/transactions" element={<Transactions />} />
+          </Route>
+          <Route path="/login" element={<Login />} />
       </Routes>
     </BrowserRouter>
   );
