@@ -17,6 +17,7 @@
     "@mui/material": "^7.3.2",
     "@mui/x-date-pickers": "^7.29.4",
     "dayjs": "^1.11.18",
+    "firebase": "^12.4.0",
     "install": "^0.13.0",
     "lucide-react": "^0.544.0",
     "npm": "^11.6.1",

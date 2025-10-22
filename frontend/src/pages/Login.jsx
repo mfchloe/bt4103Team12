@@ -22,7 +22,10 @@ const Login = () => {
 
   const navigate = useNavigate();
   const location = useLocation();
-  const redirectPath = useMemo(() => location.state?.from?.pathname || "/", [location.state]);
+  const redirectPath = useMemo(
+    () => location.state?.from?.pathname || "/",
+    [location.state]
+  );
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
@@ -52,15 +55,13 @@ const Login = () => {
         if (form.password.length < 8) {
           throw new Error("Password must be at least 8 characters long.");
         }
-        await register({
-          email: form.email,
-          password: form.password,
-          full_name: form.fullName || undefined,
-        });
+        await register(form.email, form.password, form.fullName || undefined);
       }
       navigate(redirectPath, { replace: true });
     } catch (err) {
-      setError(err?.payload?.detail || err.message || "Unable to complete request");
+      setError(
+        err?.payload?.detail || err.message || "Unable to complete request"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -70,7 +71,11 @@ const Login = () => {
     <Box sx={styles.page}>
       <Card sx={styles.card}>
         <CardContent sx={styles.cardContent}>
-          <Typography variant="h4" component="h1" sx={{ fontWeight: 700, mb: 1 }}>
+          <Typography
+            variant="h4"
+            component="h1"
+            sx={{ fontWeight: 700, mb: 1 }}
+          >
             {mode === "login" ? "Welcome back" : "Create your account"}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -122,7 +127,11 @@ const Login = () => {
               required
               fullWidth
               margin="normal"
-              helperText={mode === "register" ? "Use at least 8 characters for a strong password." : ""}
+              helperText={
+                mode === "register"
+                  ? "Use at least 8 characters for a strong password."
+                  : ""
+              }
               disabled={submitting}
             />
 
@@ -137,7 +146,6 @@ const Login = () => {
               {mode === "login" ? "Sign In" : "Create Account"}
             </Button>
           </Box>
-
         </CardContent>
       </Card>
     </Box>

@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Box, Typography, Button, CircularProgress, Alert } from "@mui/material";
+import {
+  Box,
+  Typography,
+  Button,
+  CircularProgress,
+  Alert,
+} from "@mui/material";
 
 import PortfolioTable from "../components/home/PortfolioTable";
 import RecommendationsDialog from "../components/home/RecommendationsDialog";
@@ -34,17 +40,20 @@ const Home = () => {
     portfolioRef.current = portfolio;
   }, [portfolio]);
 
-  const mapServerItem = useCallback((item) => ({
-    id: item.id,
-    symbol: item.symbol,
-    name: item.name,
-    shares: item.shares,
-    buyPrice: item.buy_price,
-    buyDate: item.buy_date,
-    currentPrice: item.current_price,
-    createdAt: item.created_at,
-    updatedAt: item.updated_at,
-  }), []);
+  const mapServerItem = useCallback(
+    (item) => ({
+      id: item.id,
+      symbol: item.symbol,
+      name: item.name,
+      shares: item.shares,
+      buyPrice: item.buy_price,
+      buyDate: item.buy_date,
+      currentPrice: item.current_price,
+      createdAt: item.created_at,
+      updatedAt: item.updated_at,
+    }),
+    []
+  );
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -57,7 +66,9 @@ const Home = () => {
       setPortfolioLoading(true);
       setApiError(null);
       try {
-        const items = await authFetch("/api/portfolio/", { signal: controller.signal });
+        const items = await authFetch("/api/portfolio/", {
+          signal: controller.signal,
+        });
         setPortfolio(items.map(mapServerItem));
       } catch (error) {
         if (controller.signal.aborted) return;
@@ -168,7 +179,14 @@ const Home = () => {
   return (
     <Box sx={styles.container}>
       <Box sx={{ maxWidth: 1200, mx: "auto" }}>
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            mb: 2,
+          }}
+        >
           <Typography variant="h4" sx={styles.header}>
             My Portfolio
           </Typography>

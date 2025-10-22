@@ -1,193 +1,138 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { jsonRequest } from "../api/httpClient";
-
-const STORAGE_KEY = "auth:session";
-
+// src/context/AuthContext.jsx
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+} from "react";
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  updateProfile,
+  getIdToken,
+} from "firebase/auth";
+import { auth } from "../../firebase";
 const AuthContext = createContext(undefined);
 
-const initialSession = {
-  user: null,
-  accessToken: null,
-  refreshToken: null,
-};
-
-const storeSession = (session) => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-  } catch (err) {
-    console.warn("Failed to persist auth session", err);
-  }
-};
-
-const clearStoredSession = () => {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch (err) {
-    console.warn("Failed to clear auth session", err);
-  }
-};
-
 export const AuthProvider = ({ children }) => {
-  const [session, setSession] = useState(initialSession);
+  const [user, setUser] = useState(null);
+  const [accessToken, setAccessToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const setSessionFromResponse = useCallback((payload) => {
-    const next = {
-      user: payload.user ?? payload,
-      accessToken: payload.access_token,
-      refreshToken: payload.refresh_token,
-    };
-    setSession(next);
-    storeSession(next);
-    return next;
+  // ---- Login ----
+  const login = useCallback(async (email, password) => {
+    const userCredential = await signInWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
+    const token = await getIdToken(userCredential.user, true);
+    setUser(userCredential.user);
+    setAccessToken(token);
+    return userCredential.user;
   }, []);
 
-  const logout = useCallback(() => {
-    setSession(initialSession);
-    clearStoredSession();
-  }, []);
-
-  const refreshTokens = useCallback(async () => {
-    if (!session.refreshToken) {
-      throw new Error("Missing refresh token");
+  // ---- Register ----
+  const register = useCallback(async (email, password, displayName) => {
+    const userCredential = await createUserWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
+    if (displayName) {
+      await updateProfile(userCredential.user, { displayName });
     }
-    const data = await jsonRequest("/api/auth/refresh", {
-      method: "POST",
-      body: { refresh_token: session.refreshToken },
+    const token = await getIdToken(userCredential.user, true);
+    setUser(userCredential.user);
+    setAccessToken(token);
+    return userCredential.user;
+  }, []);
+
+  // ---- Logout ----
+  const logout = useCallback(async () => {
+    await signOut(auth);
+    setUser(null);
+    setAccessToken(null);
+  }, []);
+
+  // ---- Refresh token (Firebase handles automatically, but we can force refresh) ----
+  const refreshTokens = useCallback(async () => {
+    if (!auth.currentUser) throw new Error("No user to refresh");
+    const token = await getIdToken(auth.currentUser, true);
+    setAccessToken(token);
+    return token;
+  }, []);
+
+  // ---- Protected fetch helper ----
+  const authFetch = useCallback(async (path, options = {}) => {
+    const token = await getIdToken(auth.currentUser || {}, false);
+    if (!token) throw new Error("Not authenticated");
+
+    const res = await fetch(path, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
     });
-    return setSessionFromResponse(data);
-  }, [session.refreshToken, setSessionFromResponse]);
 
-  const authFetch = useCallback(
-    async (path, options = {}) => {
-      if (!session.accessToken) {
-        throw new Error("Not authenticated");
-      }
-
-      try {
-        return await jsonRequest(path, {
-          ...options,
-          token: session.accessToken,
-        });
-      } catch (error) {
-        if (error.status === 401 && session.refreshToken) {
-          const refreshed = await refreshTokens();
-          return jsonRequest(path, {
-            ...options,
-            token: refreshed.accessToken,
-          });
-        }
-        throw error;
-      }
-    },
-    [session.accessToken, session.refreshToken, refreshTokens]
-  );
-
-  const login = useCallback(
-    async (email, password) => {
-      const data = await jsonRequest("/api/auth/login", {
-        method: "POST",
-        body: { email, password },
+    if (res.status === 401) {
+      // try one refresh
+      const refreshed = await getIdToken(auth.currentUser, true);
+      const retry = await fetch(path, {
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+          Authorization: `Bearer ${refreshed}`,
+          "Content-Type": "application/json",
+        },
       });
-      return setSessionFromResponse(data);
-    },
-    [setSessionFromResponse]
-  );
+      if (!retry.ok) throw new Error(`Request failed: ${retry.status}`);
+      return retry.json();
+    }
 
-  const register = useCallback(
-    async (payload) => {
-      const data = await jsonRequest("/api/auth/register", {
-        method: "POST",
-        body: payload,
-      });
-      return setSessionFromResponse(data);
-    },
-    [setSessionFromResponse]
-  );
+    if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+    return res.json();
+  }, []);
 
+  // ---- Restore session (Firebase handles persistence automatically) ----
   useEffect(() => {
-    let isMounted = true;
-    const restoreSession = async () => {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) {
-          return;
-        }
-        const parsed = JSON.parse(raw);
-        if (!parsed?.accessToken || !parsed?.refreshToken) {
-          clearStoredSession();
-          return;
-        }
-        setSession(parsed);
-        try {
-          const profile = await jsonRequest("/api/auth/me", { token: parsed.accessToken });
-          if (isMounted) {
-            setSession((prev) => {
-              const next = { ...prev, user: profile };
-              storeSession(next);
-              return next;
-            });
-          }
-        } catch (error) {
-          if (error.status === 401 && parsed.refreshToken) {
-            try {
-              const refreshed = await jsonRequest("/api/auth/refresh", {
-                method: "POST",
-                body: { refresh_token: parsed.refreshToken },
-              });
-              if (isMounted) {
-                setSessionFromResponse(refreshed);
-              }
-            } catch (refreshError) {
-              console.warn("Failed to refresh token during bootstrap", refreshError);
-              if (isMounted) {
-                logout();
-              }
-            }
-          } else if (isMounted) {
-            logout();
-          }
-        }
-      } catch (err) {
-        console.warn("Failed to restore auth session", err);
-        logout();
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const token = await getIdToken(firebaseUser, false);
+        setUser(firebaseUser);
+        setAccessToken(token);
+      } else {
+        setUser(null);
+        setAccessToken(null);
       }
-    };
+      setLoading(false);
+    });
 
-    restoreSession();
-    return () => {
-      isMounted = false;
-    };
-  }, [logout, setSessionFromResponse]);
+    return unsubscribe;
+  }, []);
 
   const value = useMemo(
     () => ({
-      user: session.user,
-      accessToken: session.accessToken,
-      refreshToken: session.refreshToken,
-      isAuthenticated: Boolean(session.user && session.accessToken),
+      user,
+      accessToken,
+      isAuthenticated: Boolean(user),
       loading,
       login,
       register,
       logout,
       refreshTokens,
       authFetch,
-      setUser: (user) => {
-        setSession((prev) => {
-          const next = { ...prev, user };
-          storeSession(next);
-          return next;
-        });
-      },
+      setUser,
     }),
     [
-      session.user,
-      session.accessToken,
-      session.refreshToken,
+      user,
+      accessToken,
       loading,
       login,
       register,
@@ -202,8 +147,6 @@ export const AuthProvider = ({ children }) => {
 
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
+  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
   return ctx;
 };
