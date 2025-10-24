@@ -72,6 +72,11 @@ const Home = () => {
         setPortfolio(items.map(mapServerItem));
       } catch (error) {
         if (controller.signal.aborted) return;
+        if (error?.status === 401) {
+          setPortfolio([]);
+          setApiError(null);
+          return;
+        }
         setApiError(error.message || "Failed to load portfolio.");
       } finally {
         if (!controller.signal.aborted) {

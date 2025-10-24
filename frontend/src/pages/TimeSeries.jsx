@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
   Chip,
@@ -9,9 +9,6 @@ import {
   Typography,
   Alert,
   Grid,
-  Link as MuiLink,
-  Tooltip as MuiTooltip,
-  IconButton,
 } from "@mui/material";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
@@ -28,37 +25,56 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import dayjs from "dayjs";
-import {
-  X,
-  ExternalLink,
-  TrendingUp,
-  TrendingDown,
-  Minus as MinusIcon,
-} from "lucide-react";
+import { X, TrendingUp, TrendingDown, Minus as MinusIcon } from "lucide-react";
 
 import { CHART_COLORS } from "../constants/colors";
 import { formatCurrency } from "../utils/mathHelpers";
+import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import { useSessionStorageState } from "../hooks/useSessionStorageState";
 import { apiBaseUrl } from "../api/httpClient.js";
 
-const API_BASE_URL = `${apiBaseUrl}/api/yfinance`;
-const SENTIMENT_API = `${apiBaseUrl}/api/sentiment/news-sentiment`;
-const INITIAL_START_DATE = dayjs().subtract(6, "month");
+const API_BASE_URL = `${apiBaseUrl}/api/dataset/timeseries`;
+const MAX_AVAILABLE_DATE = dayjs("2022-11-29");
+const INITIAL_START_DATE = dayjs("2021-01-01");
 const INITIAL_START_DATE_STRING = INITIAL_START_DATE.format("YYYY-MM-DD");
 
+const applyAlpha = (hex, alpha) => {
+  if (!hex) return `rgba(241,245,249,${alpha})`;
+  const normalized = hex.replace("#", "");
+  const bigint = parseInt(
+    normalized.length === 3
+      ? normalized
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : normalized,
+    16
+  );
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
+const CARD_ALPHA = 0.2;
+const defaultPalette = {
+  light: applyAlpha("#0f172a", CARD_ALPHA),
+  dark: "#0f172a",
+};
+
 const TimeSeries = () => {
-  const [searchInput, setSearchInput] = useSessionStorageState(
+  const [searchInput, setSearchInput] = useLocalStorageState(
     "time-series:search-input",
     ""
   );
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
 
-  const [selectedStocks, setSelectedStocks] = useSessionStorageState(
+  const [selectedStocks, setSelectedStocks] = useLocalStorageState(
     "time-series:selected-stocks",
     []
   );
-  const [startDateRaw, setStartDateRaw] = useSessionStorageState(
+  const [startDateRaw, setStartDateRaw] = useLocalStorageState(
     "time-series:start-date",
     INITIAL_START_DATE_STRING
   );
@@ -76,21 +92,92 @@ const TimeSeries = () => {
   const [loadingSeries, setLoadingSeries] = useState(false);
   const [seriesError, setSeriesError] = useState(null);
 
-  // sentiments
-  const [sentiments, setSentiments] = useState({});
-  const [sentLoading, setSentLoading] = useState(false);
-  const [sentError, setSentError] = useState(null);
+  const hasValidDate =
+    startDate &&
+    startDate.isValid() &&
+    !startDate.isAfter(MAX_AVAILABLE_DATE);
 
-  const hasValidDate = startDate && startDate.isValid();
+  useEffect(() => {
+    if (!startDate || !startDate.isValid()) {
+      if (startDateRaw !== INITIAL_START_DATE_STRING) {
+        setStartDateRaw(INITIAL_START_DATE_STRING);
+      }
+      return;
+    }
+    const maxDateString = MAX_AVAILABLE_DATE.format("YYYY-MM-DD");
+    if (startDate.isAfter(MAX_AVAILABLE_DATE) && startDateRaw !== maxDateString) {
+      setStartDateRaw(maxDateString);
+    }
+  }, [
+    startDate,
+    startDateRaw,
+    setStartDateRaw,
+    INITIAL_START_DATE_STRING,
+    MAX_AVAILABLE_DATE,
+  ]);
+
+  const getAssetKey = useCallback(
+    (asset) => (asset?.isin ? asset.isin : asset?.symbol),
+    []
+  );
+
+  const pickNextColor = useCallback((existingStocks = []) => {
+    const used = new Set(
+      existingStocks
+        .map((stock) => stock?.color)
+        .filter((color) => color && CHART_COLORS.includes(color))
+    );
+    const available = CHART_COLORS.find((color) => !used.has(color));
+    if (available) return available;
+    const fallbackIndex = existingStocks.length % CHART_COLORS.length;
+    return CHART_COLORS[fallbackIndex];
+  }, []);
 
   // ---------- helpers (JSX-safe) ----------
-  const colorForSymbol = useCallback(
-    (symbol) => {
-      if (!selectedStocks.length) return "#999999";
-      const idx = selectedStocks.findIndex((s) => s.symbol === symbol);
+  const getSymbolIndex = useCallback(
+    (identifier) => {
+      if (!selectedStocks.length) return 0;
+      const idx = selectedStocks.findIndex(
+        (s) => s.symbol === identifier || getAssetKey(s) === identifier
+      );
+      return idx >= 0 ? idx : 0;
+    },
+    [selectedStocks, getAssetKey]
+  );
+
+  const getColorForIdentifier = useCallback(
+    (identifier) => {
+      const match = selectedStocks.find(
+        (stock) =>
+          getAssetKey(stock) === identifier || stock.symbol === identifier
+      );
+      if (match?.color && CHART_COLORS.includes(match.color)) {
+        return match.color;
+      }
+      const idx = getSymbolIndex(identifier);
       return CHART_COLORS[idx % CHART_COLORS.length];
     },
-    [selectedStocks]
+    [selectedStocks, getAssetKey, getSymbolIndex]
+  );
+
+  const getPaletteForSymbol = useCallback(
+    (identifier) => {
+      const stroke = getColorForIdentifier(identifier);
+      if (!stroke) return defaultPalette;
+      return {
+        light: applyAlpha(stroke, CARD_ALPHA),
+        dark: stroke,
+      };
+    },
+    [getColorForIdentifier]
+  );
+
+  const chartColorForSymbol = useCallback(
+    (identifier) => {
+      const palette = getPaletteForSymbol(identifier);
+      return palette.dark;
+    },
+    [getPaletteForSymbol]
   );
 
   const sentimentColor = (label) => {
@@ -99,25 +186,10 @@ const TimeSeries = () => {
     return "#6b7280"; // gray
   };
 
-  const scoreColor = (score100) => {
-    if (score100 > 30) return "#16a34a";
-    if (score100 < -30) return "#dc2626";
-    return "#6b7280";
-  };
-
   const DirectionIcon = ({ dir }) => {
     if (dir === "up") return <TrendingUp size={18} />;
     if (dir === "down") return <TrendingDown size={18} />;
     return <MinusIcon size={18} />;
-  };
-
-  const formatPubDate = (iso) => {
-    if (!iso) return "";
-    try {
-      return dayjs(iso).format("YYYY-MM-DD");
-    } catch {
-      return "";
-    }
   };
 
   // ---------- search ----------
@@ -145,29 +217,81 @@ const TimeSeries = () => {
 
   const handleAddStock = (_, stock) => {
     if (!stock) return;
+
+    const normalized = { ...stock };
+    normalized.isin =
+      typeof stock?.isin === "string" ? stock.isin.trim() : stock?.isin;
+    normalized.name =
+      typeof stock?.name === "string" ? stock.name.trim() : stock?.name;
+    normalized.symbol =
+      typeof stock?.symbol === "string"
+        ? stock.symbol.trim()
+        : normalized.name || normalized.isin || stock.symbol || stock.name;
+
     setSelectedStocks((prev) => {
-      const exists = prev.some((item) => item.symbol === stock.symbol);
+      const exists = prev.some((item) => {
+        const itemKey = getAssetKey(item);
+        if (normalized.isin) {
+          return itemKey === normalized.isin;
+        }
+        return item.symbol === normalized.symbol;
+      });
       if (exists) return prev;
-      return [...prev, stock];
+      const color = pickNextColor(prev);
+      return [...prev, { ...normalized, color }];
     });
     setSearchInput("");
     setSearchResults([]);
   };
 
-  const handleRemoveStock = (symbol) => {
+  const handleRemoveStock = (identifier) => {
     setSelectedStocks((prev) =>
-      prev.filter((stock) => stock.symbol !== symbol)
+      prev.filter((stock) => getAssetKey(stock) !== identifier)
     );
   };
+
+  useEffect(() => {
+    setSelectedStocks((prev) => {
+      if (!prev?.length) return prev;
+
+      const used = new Set();
+      let changed = false;
+
+      const updated = prev.map((stock, index) => {
+        let color =
+          stock?.color && CHART_COLORS.includes(stock.color)
+            ? stock.color
+            : null;
+        if (color && used.has(color)) {
+          color = null;
+        }
+        if (!color) {
+          const available = CHART_COLORS.find((c) => !used.has(c));
+          color =
+            available ?? CHART_COLORS[index % CHART_COLORS.length];
+          changed = true;
+          used.add(color);
+          return { ...stock, color };
+        }
+        used.add(color);
+        return stock;
+      });
+
+      return changed ? updated : prev;
+    });
+  }, [setSelectedStocks]);
 
   // ---------- transform chart data ----------
   const transformedChartData = useMemo(() => {
     if (!chartData || !chartData.length) return [];
     const dateMap = new Map();
-    chartData.forEach(({ symbol, prices }) => {
+    chartData.forEach(({ isin, symbol, prices }) => {
+      const key = isin || symbol;
+      if (!key) return;
       (prices || []).forEach(({ date, price }) => {
+        if (!date) return;
         if (!dateMap.has(date)) dateMap.set(date, { date });
-        dateMap.get(date)[symbol] = price;
+        dateMap.get(date)[key] = price;
       });
     });
     return Array.from(dateMap.values()).sort(
@@ -175,11 +299,97 @@ const TimeSeries = () => {
     );
   }, [chartData]);
 
+  const sharpeSummaries = useMemo(() => {
+    if (!chartData?.length) return {};
+
+    const summaries = {};
+    const annualizationFactor = Math.sqrt(252);
+    const halfPi = Math.PI / 2;
+
+    chartData.forEach((series) => {
+      const { prices = [], symbol, isin } = series || {};
+      if (!prices.length) return;
+
+      const sorted = [...prices].sort(
+        (a, b) => new Date(a.date) - new Date(b.date)
+      );
+
+      const returns = [];
+      for (let i = 1; i < sorted.length; i += 1) {
+        const prev = Number(sorted[i - 1].price);
+        const curr = Number(sorted[i].price);
+        if (!Number.isFinite(prev) || !Number.isFinite(curr) || prev <= 0) {
+          continue;
+        }
+        const ret = curr / prev - 1;
+        if (Number.isFinite(ret)) returns.push(ret);
+      }
+
+      const startPrice = Number(sorted[0].price);
+      const endPrice = Number(sorted[sorted.length - 1].price);
+      const overallReturn =
+        Number.isFinite(startPrice) && startPrice > 0 && Number.isFinite(endPrice)
+          ? endPrice / startPrice - 1
+          : 0;
+
+      let scaledScore = 0;
+      if (returns.length > 1) {
+        const mean =
+          returns.reduce((acc, value) => acc + value, 0) / returns.length;
+        const variance =
+          returns.length > 1
+            ? returns.reduce(
+                (acc, value) => acc + (value - mean) * (value - mean),
+                0
+              ) /
+              (returns.length - 1)
+            : 0;
+        const stdDev = Math.sqrt(Math.max(variance, 0));
+
+        if (stdDev > 0) {
+          const rawSharpe = (mean / stdDev) * annualizationFactor;
+          const normalized = Math.atan(rawSharpe) / halfPi;
+          scaledScore = Number.isFinite(normalized) ? normalized : 0;
+        } else {
+          if (overallReturn > 0) scaledScore = 1;
+          else if (overallReturn < 0) scaledScore = -1;
+          else scaledScore = 0;
+        }
+      } else {
+        if (overallReturn > 0) scaledScore = 1;
+        else if (overallReturn < 0) scaledScore = -1;
+        else scaledScore = 0;
+      }
+
+      const clamped = Math.max(-1, Math.min(1, scaledScore));
+      const rounded = Number.isFinite(clamped) ? Number(clamped.toFixed(4)) : 0;
+
+      const label =
+        rounded > 0 ? "Positive" : rounded < 0 ? "Negative" : "Neutral";
+      const direction = rounded > 0 ? "up" : rounded < 0 ? "down" : "flat";
+
+      const entry = {
+        summary_label: label,
+        direction,
+        score: rounded,
+      };
+
+      const keySymbol = symbol || isin;
+      if (keySymbol) summaries[keySymbol] = entry;
+      if (symbol && symbol !== keySymbol) summaries[symbol] = entry;
+      if (isin && isin !== keySymbol) summaries[isin] = entry;
+    });
+
+    return summaries;
+  }, [chartData]);
+
   // ---------- fetch price series ----------
   useEffect(() => {
     let ignore = false;
 
     const fetchSeries = async () => {
+      setSeriesError(null);
+
       if (!selectedStocks.length || !hasValidDate) {
         if (!ignore) {
           setChartData([]);
@@ -188,22 +398,31 @@ const TimeSeries = () => {
         return;
       }
 
+      const validAssets = selectedStocks.filter((stock) => stock.isin);
+      if (!validAssets.length) {
+        if (!ignore) {
+          setChartData([]);
+          setLastRequestSignature(null);
+          setSeriesError(
+            "Selected assets are missing dataset identifiers. Please re-add them from the search."
+          );
+        }
+        return;
+      }
+
       const payload = {
-        symbols: selectedStocks.map((stock) => stock.symbol),
+        isins: validAssets.map((stock) => stock.isin),
         startDate: startDate.format("YYYY-MM-DD"),
+        endDate: MAX_AVAILABLE_DATE.format("YYYY-MM-DD"),
       };
       const payloadSignature = JSON.stringify(payload);
 
       if (lastRequestSignature === payloadSignature && chartData.length) {
         return;
       }
+
       setLoadingSeries(true);
-      setSeriesError(null);
       try {
-        const payload = {
-          symbols: selectedStocks.map((stock) => stock.symbol),
-          startDate: startDate.format("YYYY-MM-DD"),
-        };
         const response = await fetch(`${API_BASE_URL}/historical-series`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -216,15 +435,20 @@ const TimeSeries = () => {
           );
         }
         const data = await response.json();
-        // FIX: no {success} in backend response
-        setChartData(Array.isArray(data.series) ? data.series : []);
-        if (data.success) {
-          if (!ignore) {
-            setChartData(data.series || []);
-            setLastRequestSignature(payloadSignature);
-          }
-        } else {
-          throw new Error("Failed to fetch historical prices.");
+        const series = Array.isArray(data.series) ? data.series : [];
+        const normalizedSeries = series.map((item) => {
+          const matched = validAssets.find((stock) => stock.isin === item.isin);
+          return {
+            ...item,
+            isin: item.isin || matched?.isin,
+            symbol: matched?.symbol || item.symbol || item.isin,
+            name: matched?.name || item.name,
+            prices: item.prices || [],
+          };
+        });
+        if (!ignore) {
+          setChartData(normalizedSeries);
+          setLastRequestSignature(payloadSignature);
         }
       } catch (error) {
         console.error("Error fetching historical series:", error);
@@ -251,60 +475,28 @@ const TimeSeries = () => {
     lastRequestSignature,
   ]);
 
-  // ---------- fetch sentiments ----------
-  useEffect(() => {
-    const fetchSentiments = async () => {
-      if (!selectedStocks.length) {
-        setSentiments({});
-        return;
-      }
-      setSentLoading(true);
-      setSentError(null);
-      try {
-        const payload = {
-          symbols: selectedStocks.map((s) => s.symbol),
-          max_headlines_per_symbol: 5,
-        };
-        const resp = await fetch(SENTIMENT_API, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({}));
-          throw new Error(err?.detail || "Failed to fetch sentiments");
-        }
-        const data = await resp.json();
-        setSentiments(data.sentiments || {});
-      } catch (e) {
-        console.error(e);
-        setSentError(e.message || "Failed to load sentiments.");
-        setSentiments({});
-      } finally {
-        setSentLoading(false);
-      }
-    };
-    fetchSentiments();
-  }, [selectedStocks]);
 
   // ---------- sub-components ----------
   const SelectedStocksList = () => {
-    if (!selectedStocks.length) return null;
     return (
       <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1 }}>
-        {selectedStocks.map((stock, index) => (
-          <Chip
-            key={stock.symbol}
-            label={stock.symbol}
-            onDelete={() => handleRemoveStock(stock.symbol)}
-            deleteIcon={<X size={16} />}
-            sx={{
-              bgcolor: `${CHART_COLORS[index % CHART_COLORS.length]}20`,
-              color: CHART_COLORS[index % CHART_COLORS.length],
-              fontWeight: 600,
-            }}
-          />
-        ))}
+        {selectedStocks.map((stock, index) => {
+          const identifier = getAssetKey(stock) || stock.symbol;
+          const palette = getPaletteForSymbol(identifier);
+          return (
+            <Chip
+              key={identifier}
+              label={stock.symbol}
+              onDelete={() => handleRemoveStock(identifier)}
+              deleteIcon={<X size={16} />}
+              sx={{
+                bgcolor: "transparent",
+                color: palette.dark,
+                fontWeight: 600,
+              }}
+            />
+          );
+        })}
       </Stack>
     );
   };
@@ -350,34 +542,52 @@ const TimeSeries = () => {
           <YAxis />
           <Tooltip
             formatter={(value, name) => [`${formatCurrency(value)}`, name]}
+            position={{ y: 0 }}
+            wrapperStyle={{ pointerEvents: "none" }}
+            contentStyle={{
+              borderRadius: 8,
+              borderColor: "#e5e7eb",
+              boxShadow: "0px 8px 16px rgba(15, 23, 42, 0.12)",
+            }}
           />
           <Legend />
-          {selectedStocks.map((stock, index) => (
-            <Line
-              key={stock.symbol}
-              type="monotone"
-              dataKey={stock.symbol}
-              stroke={CHART_COLORS[index % CHART_COLORS.length]}
-              strokeWidth={2}
-              dot={false}
-              connectNulls
-            />
-          ))}
+          {selectedStocks.map((stock, index) => {
+            const dataKey = getAssetKey(stock) || stock.symbol;
+            return (
+              <Line
+                key={dataKey}
+                type="monotone"
+                dataKey={dataKey}
+                name={stock.symbol}
+                stroke={chartColorForSymbol(dataKey)}
+                strokeWidth={2}
+                dot={false}
+                connectNulls
+              />
+            );
+          })}
         </LineChart>
       </ResponsiveContainer>
     );
   };
 
-  const SentimentCard = ({ sym, data }) => {
-    const stripe = colorForSymbol(sym);
+  const SentimentCard = ({ stock, identifier, data }) => {
+    const palette = getPaletteForSymbol(identifier);
+    const stripe = palette.dark;
+    const cardBg = palette.light;
     const badgeColor = sentimentColor(data.summary_label);
-    const picked = data.picked_headline;
+    const scoreValue = Number.isFinite(data?.score) ? data.score : 0;
+    const name =
+      typeof stock?.name === "string" && stock.name.trim()
+        ? stock.name.trim()
+        : null;
 
     return (
       <Paper
         elevation={0}
         sx={{
-          border: "1px solid #e5e7eb",
+          width: "100%",
+          minWidth: 0,
           borderRadius: 2,
           overflow: "hidden",
           transition: "box-shadow 0.2s ease",
@@ -385,17 +595,40 @@ const TimeSeries = () => {
           display: "flex",
           flexDirection: "column",
           height: "100%",
+          bgcolor: cardBg,
+          color: palette.dark,
         }}
       >
-        {/* Header */}
-        <Box sx={{ display: "flex", alignItems: "center", p: 2, gap: 1 }}>
-          <Box
-            sx={{ width: 8, height: 28, borderRadius: 2, bgcolor: stripe }}
-          />
-          <Typography sx={{ fontWeight: 800, letterSpacing: 0.5 }}>
-            {sym}
-          </Typography>
-          <Box sx={{ flex: 1 }} />
+        <Box sx={{ display: "flex", alignItems: "flex-start", p: 2, gap: 1 }}>
+          <Box sx={{ width: 8, height: 28, borderRadius: 2, bgcolor: stripe }} />
+          <Box sx={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1 }}>
+            <Typography
+              sx={{
+                fontWeight: 800,
+                letterSpacing: 0.5,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={stock?.symbol || identifier}
+            >
+              {stock?.symbol || identifier}
+            </Typography>
+            {name && (
+              <Typography
+                sx={{
+                  fontSize: 12,
+                  color: "#475569",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={name}
+              >
+                {name}
+              </Typography>
+            )}
+          </Box>
           <Box
             sx={{
               display: "inline-flex",
@@ -408,6 +641,7 @@ const TimeSeries = () => {
               color: badgeColor,
               fontWeight: 700,
               fontSize: 12,
+              whiteSpace: "nowrap",
             }}
           >
             <DirectionIcon dir={data.direction} />
@@ -415,7 +649,6 @@ const TimeSeries = () => {
           </Box>
         </Box>
 
-        {/* Content */}
         <Box
           sx={{
             px: 2,
@@ -423,77 +656,30 @@ const TimeSeries = () => {
             flex: 1,
             display: "flex",
             flexDirection: "column",
+            width: "100%",
+            minWidth: 0,
           }}
         >
-          <Typography sx={{ color: "#6b7280", fontSize: 12, mb: 0.5 }}>
-            Sentiment Score:
+          <Typography
+            sx={{
+              color: palette.dark,
+              fontSize: 12,
+              mb: 0.5,
+              fontWeight: 600,
+            }}
+          >
+            Sharpe-Based Score:
           </Typography>
           <Typography
             sx={{
               fontWeight: 900,
-              fontSize: 28,
+              fontSize: 32,
               lineHeight: 1.1,
-              color: scoreColor(data.summary_score100),
-              mb: 1.5,
-              minHeight: "2.5em",
+              color: palette.dark,
             }}
           >
-            {data.summary_score100}
+            {scoreValue.toFixed(2)}
           </Typography>
-
-          {picked ? (
-            <>
-              <Typography
-                sx={{
-                  fontSize: 14,
-                  fontWeight: 600,
-                  display: "-webkit-box",
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: "vertical",
-                  overflow: "hidden",
-                  mb: 1,
-                  minHeight: "2.8em",
-                  flex: 1,
-                }}
-                title={picked.title}
-              >
-                {picked.title}
-              </Typography>
-
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                  color: "#6b7280",
-                  fontSize: 12,
-                }}
-              >
-                <span>{picked.source || "—"}</span>
-                <span>•</span>
-                <span>{formatPubDate(picked.published_at)}</span>
-                <Box sx={{ flex: 1 }} />
-                {picked.url && (
-                  <MuiTooltip title="Read more">
-                    <IconButton
-                      size="small"
-                      component={MuiLink}
-                      href={picked.url}
-                      target="_blank"
-                      rel="noopener"
-                      aria-label="Read more"
-                    >
-                      <ExternalLink size={16} />
-                    </IconButton>
-                  </MuiTooltip>
-                )}
-              </Box>
-            </>
-          ) : (
-            <Typography sx={{ color: "#9ca3af", fontStyle: "italic" }}>
-              No recent headlines found.
-            </Typography>
-          )}
         </Box>
       </Paper>
     );
@@ -526,7 +712,22 @@ const TimeSeries = () => {
               if (reason === "input") handleSearchChange(newValue);
             }}
             onChange={handleAddStock}
-            getOptionLabel={(option) => `${option.symbol} - ${option.name}`}
+            getOptionLabel={(option) => {
+              if (!option) return "";
+              const symbol =
+                (typeof option.symbol === "string" && option.symbol.trim()) ||
+                (typeof option.name === "string" && option.name.trim()) ||
+                option.isin ||
+                "";
+              const name =
+                typeof option.name === "string" && option.name.trim()
+                  ? option.name.trim()
+                  : "";
+              const namePart =
+                name && name !== symbol ? ` - ${name}` : "";
+              const isinPart = option.isin ? ` (${option.isin})` : "";
+              return `${symbol}${namePart}${isinPart}`.trim();
+            }}
             renderInput={(params) => (
               <TextField
                 {...params}
@@ -571,7 +772,7 @@ const TimeSeries = () => {
               )
             }
             disableFuture
-            maxDate={dayjs()}
+            maxDate={MAX_AVAILABLE_DATE}
             slotProps={{ textField: { fullWidth: true } }}
           />
         </Paper>
@@ -598,37 +799,34 @@ const TimeSeries = () => {
             </Box>
           )}
 
-          {sentError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {sentError}
-            </Alert>
-          )}
-
-          {sentLoading && (
-            <Box sx={styles.placeholderBox}>
-              <CircularProgress />
-            </Box>
-          )}
-
-          {!sentLoading && !sentError && selectedStocks.length > 0 && (
-            <Grid container spacing={3}>
-              {selectedStocks.map((s) => {
-                const data = sentiments?.[s.symbol] || {
-                  summary_label: "Neutral",
-                  summary_score100: 0,
-                  direction: "flat",
-                  picked_headline: null,
-                  headlines: [],
-                };
+          {selectedStocks.length > 0 && (
+            <Grid
+              container
+              spacing={3}
+              sx={{ alignItems: "stretch", width: "100%", mx: 0 }}
+            >
+              {selectedStocks.map((stock) => {
+                const identifier = getAssetKey(stock) || stock.symbol;
+                const data =
+                  sharpeSummaries[identifier] ||
+                  sharpeSummaries[stock.symbol] || {
+                    summary_label: "Neutral",
+                    direction: "flat",
+                    score: 0,
+                  };
                 return (
                   <Grid
                     item
                     xs={12}
                     md={6}
-                    key={s.symbol}
-                    sx={{ display: "flex" }}
+                    key={stock.symbol}
+                    sx={{ display: "flex", minWidth: 0 }}
                   >
-                    <SentimentCard sym={s.symbol} data={data} />
+                    <SentimentCard
+                      stock={stock}
+                      identifier={identifier}
+                      data={data}
+                    />
                   </Grid>
                 );
               })}
@@ -660,12 +858,14 @@ const styles = {
     borderRadius: 3,
     mb: 4,
     border: "1px solid #e5e7eb",
+    bgcolor: "#f5f6fa",
   },
   chartCard: {
     p: 3,
     borderRadius: 3,
     border: "1px solid #e5e7eb",
     minHeight: 420,
+    bgcolor: "#f5f6fa",
   },
   placeholderBox: {
     height: 400,
@@ -677,3 +877,5 @@ const styles = {
     bgcolor: "#f9fafb",
   },
 };
+
+

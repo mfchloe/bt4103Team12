@@ -13,6 +13,7 @@ class StockPriceResponse(BaseModel):
 class StockSearchResult(BaseModel):
     symbol: str
     name: str
+    isin: Optional[str] = None
 
 
 class StockSearchResponse(BaseModel):
@@ -45,6 +46,8 @@ class HistoricalSeriesPoint(BaseModel):
 class HistoricalSeriesItem(BaseModel):
     symbol: str
     prices: List[HistoricalSeriesPoint]
+    isin: Optional[str] = None
+    name: Optional[str] = None
 
 
 class HistoricalSeriesRequest(BaseModel):
@@ -53,7 +56,18 @@ class HistoricalSeriesRequest(BaseModel):
     endDate: Optional[str] = None
 
 
+class DatasetHistoricalSeriesRequest(BaseModel):
+    isins: List[str] = Field(..., min_items=1)
+    startDate: str
+    endDate: Optional[str] = None
+
+
 class HistoricalSeriesResponse(BaseModel):
+    series: List[HistoricalSeriesItem]
+    success: bool = True
+
+
+class DatasetHistoricalSeriesResponse(BaseModel):
     series: List[HistoricalSeriesItem]
     success: bool = True
 
