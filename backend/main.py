@@ -1,13 +1,19 @@
+import logging
+
+import nltk
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from controllers import yfinance_controller
-from controllers import far_controller
-from controllers import sentiment_controller
-from controllers import auth_controller, far_controller, portfolio_controller, yfinance_controller
+
+from controllers import (
+    auth_controller,
+    dataset_timeseries_controller,
+    far_controller,
+    portfolio_controller,
+    sentiment_controller,
+    yfinance_controller,
+)
 from database import Base, engine
-import logging
-import uvicorn
-import nltk
 
 def ensure_vader():
     try:
@@ -46,6 +52,7 @@ def startup_event():
 app.include_router(auth_controller.router)
 app.include_router(portfolio_controller.router)
 app.include_router(yfinance_controller.router)
+app.include_router(dataset_timeseries_controller.router)
 app.include_router(far_controller.router)
 app.include_router(sentiment_controller.router)
 
