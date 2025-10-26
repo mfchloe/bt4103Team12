@@ -195,6 +195,7 @@ const Home = () => {
           <Typography variant="h4" sx={styles.header}>
             My Portfolio
           </Typography>
+          
           <Button
             onClick={() => navigate("/transactions")}
             sx={styles.txButtonTop}
@@ -202,6 +203,17 @@ const Home = () => {
           >
             My Transactions
           </Button>
+
+          <Button
+            onClick={() => navigate("/myCharts")}
+            sx={styles.txButtonTop}
+            variant="contained"
+          >
+            My Charts
+          </Button>
+
+
+
         </Box>
 
         {apiError && (
