@@ -16,6 +16,7 @@ import {
   getIdToken,
 } from "firebase/auth";
 import { auth } from "../../firebase";
+import { apiBaseUrl } from "../api/httpClient.js";
 const AuthContext = createContext(undefined);
 
 export const AuthProvider = ({ children }) => {
@@ -69,35 +70,81 @@ export const AuthProvider = ({ children }) => {
 
   // ---- Protected fetch helper ----
   const authFetch = useCallback(async (path, options = {}) => {
-    const token = await getIdToken(auth.currentUser || {}, false);
-    if (!token) throw new Error("Not authenticated");
+    const buildUrl = (maybeRelative) =>
+      /^https?:\/\//i.test(maybeRelative)
+        ? maybeRelative
+        : `${apiBaseUrl}${maybeRelative}`;
 
-    const res = await fetch(path, {
-      ...options,
-      headers: {
-        ...(options.headers || {}),
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    });
+    const serializeBody = (bodyValue, headers) => {
+      if (!bodyValue) return undefined;
+      if (bodyValue instanceof FormData) return bodyValue;
+      if (typeof bodyValue === "string") return bodyValue;
+      headers.set("Content-Type", "application/json");
+      return JSON.stringify(bodyValue);
+    };
 
-    if (res.status === 401) {
-      // try one refresh
-      const refreshed = await getIdToken(auth.currentUser, true);
-      const retry = await fetch(path, {
+    const performRequest = async (tokenValue) => {
+      const headers = new Headers(options.headers || {});
+      headers.set("Authorization", `Bearer ${tokenValue}`);
+
+      const requestInit = {
         ...options,
-        headers: {
-          ...(options.headers || {}),
-          Authorization: `Bearer ${refreshed}`,
-          "Content-Type": "application/json",
-        },
-      });
-      if (!retry.ok) throw new Error(`Request failed: ${retry.status}`);
-      return retry.json();
+        headers,
+        body: serializeBody(options.body, headers),
+      };
+
+      const response = await fetch(buildUrl(path), requestInit);
+      const text = await response.text();
+      let payload = null;
+
+      if (text) {
+        try {
+          payload = JSON.parse(text);
+        } catch (parseError) {
+          const friendly = new Error("Received unexpected response from server.");
+          friendly.status = response.status;
+          friendly.raw = text;
+          throw friendly;
+        }
+      }
+
+      return { response, payload };
+    };
+
+    const ensureToken = async (forceRefresh = false) => {
+      if (!auth.currentUser) {
+        const error = new Error("Not authenticated");
+        error.status = 401;
+        throw error;
+      }
+      return getIdToken(auth.currentUser, forceRefresh);
+    };
+
+    const initialToken = await ensureToken(false);
+
+    let { response, payload } = await performRequest(initialToken);
+
+    if (response.status === 401) {
+      const refreshedToken = await ensureToken(true).catch(() => null);
+      if (!refreshedToken) {
+        const error = new Error("Session expired. Please log in again.");
+        error.status = 401;
+        throw error;
+      }
+      ({ response, payload } = await performRequest(refreshedToken));
     }
 
-    if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-    return res.json();
+    if (!response.ok) {
+      const error = new Error(
+        payload?.detail || payload?.message || `Request failed: ${response.status}`
+      );
+      error.status = response.status;
+      error.payload = payload;
+
+      throw error;
+    }
+
+    return payload;
   }, []);
 
   // ---- Restore session (Firebase handles persistence automatically) ----
