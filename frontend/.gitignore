@@ -147,3 +147,5 @@ venv.bak/
 Thumbs.db
 
 backend/datasets/*.csv
+
+.env
