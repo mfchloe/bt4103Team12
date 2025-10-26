@@ -1,6 +1,5 @@
 from datetime import datetime
 from typing import Optional
-
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
 
@@ -17,6 +16,10 @@ class LoginRequest(BaseModel):
 
 class SocialLoginRequest(BaseModel):
   id_token: str = Field(..., alias="credential")
+
+
+class FarCustomerLoginRequest(BaseModel):
+  customer_id: str = Field(..., description="Customer ID from FAR-TRANS dataset")
 
 
 class UserOut(BaseModel):
@@ -39,6 +42,13 @@ class TokenPair(BaseModel):
 
 class TokenResponse(TokenPair):
   user: UserOut
+
+
+class FarTokenResponse(BaseModel):
+  access_token: str
+  token_type: str = "bearer"
+  mode: str = "far_customer"
+  customer_id: str
 
 
 class RefreshRequest(BaseModel):

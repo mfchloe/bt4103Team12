@@ -17,14 +17,28 @@ import {
 } from "firebase/auth";
 import { auth } from "../../firebase";
 import { apiBaseUrl } from "../api/httpClient.js";
+
 const AuthContext = createContext(undefined);
 
 export const AuthProvider = ({ children }) => {
+  // firebase-backed user session
   const [user, setUser] = useState(null);
   const [accessToken, setAccessToken] = useState(null);
+
+  // dataset-backed customer session  (far-trans database)
+  const [farCustomerSession, setFarCustomerSession] = useState(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.sessionStorage.getItem("farCustomerSession");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+
   const [loading, setLoading] = useState(true);
 
-  // ---- Login ----
+  // ---- Login: Email/Password version ----
   const login = useCallback(async (email, password) => {
     const userCredential = await signInWithEmailAndPassword(
       auth,
@@ -32,9 +46,59 @@ export const AuthProvider = ({ children }) => {
       password
     );
     const token = await getIdToken(userCredential.user, true);
+
+    // clear datasetSession if we were previously in dataset mode
+    setFarCustomerSession(null);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem("farCustomerSession");
+    }
+
     setUser(userCredential.user);
     setAccessToken(token);
     return userCredential.user;
+  }, []);
+
+  // ---- Login: Far-trans dataset version ----
+  const farCustomerLogin = useCallback(async (customerId) => {
+    const res = await fetch(`${apiBaseUrl}/api/auth/far-customer-login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer_id: customerId })
+    });
+
+    const payloadText = await res.text();
+    let payload = null;
+    if (payloadText) {
+      try {
+        payload = JSON.parse(payloadText);
+      } catch {
+        throw new Error(
+          `Unexpected response from server (status ${res.status})`
+        );
+      }
+    }
+
+    if (!res.ok) {
+      throw new Error(payload?.detail || payload?.message || "Invalid Customer ID");
+    }
+
+    const newSession = {
+      mode: payload.mode || "dataset",
+      customerId: payload.customer_id,
+      accessToken: payload.access_token
+    };
+
+    setUser(null);
+    setAccessToken(null);
+
+    setFarCustomerSession(newSession);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(
+        "farCustomerSession",
+        JSON.stringify(newSession)
+      );
+    }
+    return newSession;
   }, []);
 
   // ---- Register ----
@@ -48,16 +112,30 @@ export const AuthProvider = ({ children }) => {
       await updateProfile(userCredential.user, { displayName });
     }
     const token = await getIdToken(userCredential.user, true);
+
+    setFarCustomerSession(null);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem("farCustomerSession");
+    }
     setUser(userCredential.user);
     setAccessToken(token);
+
     return userCredential.user;
   }, []);
 
   // ---- Logout ----
   const logout = useCallback(async () => {
-    await signOut(auth);
+    try {
+      await signOut(auth);
+    } catch {
+      //ignore if already signed out
+    }
     setUser(null);
     setAccessToken(null);
+    setFarCustomerSession(null);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem("farCustomerSession");
+    } 
   }, []);
 
   // ---- Refresh token (Firebase handles automatically, but we can force refresh) ----
@@ -74,6 +152,18 @@ export const AuthProvider = ({ children }) => {
       /^https?:\/\//i.test(maybeRelative)
         ? maybeRelative
         : `${apiBaseUrl}${maybeRelative}`;
+
+    const getActiveToken = async () =>  {
+      if (farCustomerSession?.accessToken) {
+        return farCustomerSession.accessToken;
+      }
+      if (!auth.currentUser) {
+        const err = new Error("Not authenticated");
+        err.status = 401;
+        throw err;
+      }
+      return getIdToken(auth.currentUser, false);
+    };
 
     const serializeBody = (bodyValue, headers) => {
       if (!bodyValue) return undefined;
@@ -100,7 +190,7 @@ export const AuthProvider = ({ children }) => {
       if (text) {
         try {
           payload = JSON.parse(text);
-        } catch (parseError) {
+        } catch {
           const friendly = new Error("Received unexpected response from server.");
           friendly.status = response.status;
           friendly.raw = text;
@@ -111,21 +201,11 @@ export const AuthProvider = ({ children }) => {
       return { response, payload };
     };
 
-    const ensureToken = async (forceRefresh = false) => {
-      if (!auth.currentUser) {
-        const error = new Error("Not authenticated");
-        error.status = 401;
-        throw error;
-      }
-      return getIdToken(auth.currentUser, forceRefresh);
-    };
+    const tokenToUse = await getActiveToken();
+    let { response, payload } = await performRequest(tokenToUse);
 
-    const initialToken = await ensureToken(false);
-
-    let { response, payload } = await performRequest(initialToken);
-
-    if (response.status === 401) {
-      const refreshedToken = await ensureToken(true).catch(() => null);
+    if (response.status === 401 && !farCustomerSession?.accessToken) {
+      const refreshedToken = await getIdToken(auth.currentUser, true).catch(() => null);
       if (!refreshedToken) {
         const error = new Error("Session expired. Please log in again.");
         error.status = 401;
@@ -140,12 +220,11 @@ export const AuthProvider = ({ children }) => {
       );
       error.status = response.status;
       error.payload = payload;
-
       throw error;
     }
 
     return payload;
-  }, []);
+  }, [farCustomerSession]);
 
   // ---- Restore session (Firebase handles persistence automatically) ----
   useEffect(() => {
@@ -154,9 +233,30 @@ export const AuthProvider = ({ children }) => {
         const token = await getIdToken(firebaseUser, false);
         setUser(firebaseUser);
         setAccessToken(token);
+
+        setFarCustomerSession(null);
+        if (typeof window !== "undefined") {
+          window.sessionStorage.removeItem("farCustomerSession");
+        }
       } else {
-        setUser(null);
-        setAccessToken(null);
+        let restored = null;
+        if (typeof window !== "undefined") {
+          try {
+            const raw = window.sessionStorage.getItem("farCustomerSession");
+            restored = raw ? JSON.parse(raw) : null;
+          } catch {
+            restored = null;
+          }
+        }
+        if (restored && restored.accessToken) {
+          setFarCustomerSession(restored);
+          setUser(null);
+          setAccessToken(null);
+        } else {
+          setFarCustomerSession(null);
+          setUser(null);
+          setAccessToken(null);
+        }
       }
       setLoading(false);
     });
@@ -164,14 +264,22 @@ export const AuthProvider = ({ children }) => {
     return unsubscribe;
   }, []);
 
+
+  const isFarCustomer = Boolean(farCustomerSession?.accessToken);
+  const isFirebaseUser = Boolean(user && accessToken);
+
   const value = useMemo(
     () => ({
       user,
       accessToken,
-      isAuthenticated: Boolean(user),
+      farCustomerSession,
       loading,
+      isFarCustomer,
+      isFirebaseUser,
+      isAuthenticated: isFarCustomer || isFirebaseUser,
       login,
       register,
+      farCustomerLogin,
       logout,
       refreshTokens,
       authFetch,
@@ -180,9 +288,13 @@ export const AuthProvider = ({ children }) => {
     [
       user,
       accessToken,
+      farCustomerSession,
       loading,
+      isFarCustomer,
+      isFirebaseUser,
       login,
       register,
+      farCustomerLogin,
       logout,
       refreshTokens,
       authFetch,

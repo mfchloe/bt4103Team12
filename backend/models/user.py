@@ -27,7 +27,7 @@ class User(Base):
   created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
   updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-  portfolio_items = relationship("PortfolioItem", back_populates="owner", cascade="all, delete-orphan")
+  #portfolio_items = relationship("PortfolioItem", back_populates="owner", cascade="all, delete-orphan")
 
   def __repr__(self) -> str:
     return f"User(id={self.id}, email={self.email}, provider={self.provider})"
