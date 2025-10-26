@@ -15,10 +15,10 @@ import { useAuth } from "../context/AuthContext.jsx";
 
 const Login = () => {
   const [mode, setMode] = useState("login");
-  const [form, setForm] = useState({ email: "", password: "", fullName: "" });
+  const [form, setForm] = useState({ email: "", password: "", fullName: "", customerId: "" });
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const { login, register, isAuthenticated, loading } = useAuth();
+  const { login, register, farCustomerLogin, isAuthenticated, loading } = useAuth();
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -51,12 +51,18 @@ const Login = () => {
     try {
       if (mode === "login") {
         await login(form.email, form.password);
-      } else {
+      } else if (mode === "register") {
         if (form.password.length < 8) {
           throw new Error("Password must be at least 8 characters long.");
         }
         await register(form.email, form.password, form.fullName || undefined);
+      } else if (mode === "far_customer") {
+        if (!form.customerId.trim()) {
+          throw new Error("Please enter a valid Customer ID.");
+        }
+        await farCustomerLogin(form.customerId.trim());
       }
+
       navigate(redirectPath, { replace: true });
     } catch (err) {
       setError(
@@ -65,6 +71,18 @@ const Login = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const titleByMode = {
+    login: "Sign in",
+    register: "Create account",
+    far_customer: "Customer ID Login",
+  }
+
+  const descByMode = {
+    login: "Sign in to view your personalised portfolio and track your stocks.",
+    register: "Register to start building your personalised portfolio.",
+    far_customer: "Use a Customer ID to explore the app as an existing anonymised customer.",
   };
 
   return (
@@ -76,17 +94,16 @@ const Login = () => {
             component="h1"
             sx={{ fontWeight: 700, mb: 1 }}
           >
-            {mode === "login" ? "Welcome back" : "Create your account"}
+            {titleByMode[mode]}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            {mode === "login"
-              ? "Sign in to access your personalised portfolio dashboard."
-              : "Register to start building and tracking your personalised portfolio."}
+            {descByMode[mode]}
           </Typography>
 
           <Tabs value={mode} onChange={handleTabChange} sx={styles.tabs}>
             <Tab label="Sign In" value="login" />
             <Tab label="Create Account" value="register" />
+            <Tab label="Far Customer" value="far_customer" />
           </Tabs>
 
           {error && (
@@ -107,33 +124,53 @@ const Login = () => {
                 disabled={submitting}
               />
             )}
-            <TextField
-              label="Email Address"
-              name="email"
-              type="email"
-              value={form.email}
-              onChange={handleInputChange}
-              required
-              fullWidth
-              margin="normal"
-              disabled={submitting}
-            />
-            <TextField
-              label="Password"
-              name="password"
-              type="password"
-              value={form.password}
-              onChange={handleInputChange}
-              required
-              fullWidth
-              margin="normal"
-              helperText={
-                mode === "register"
-                  ? "Use at least 8 characters for a strong password."
-                  : ""
-              }
-              disabled={submitting}
-            />
+
+            {mode !== "far_customer" && (
+              <>
+                <TextField
+                  label="Email Address"
+                  name="email"
+                  type="email"
+                  value={form.email}
+                  onChange={handleInputChange}
+                  required
+                  fullWidth
+                  margin="normal"
+                  disabled={submitting}
+                />
+                <TextField
+                  label="Password"
+                  name="password"
+                  type="password"
+                  value={form.password}
+                  onChange={handleInputChange}
+                  required
+                  fullWidth
+                  margin="normal"
+                  helperText={
+                    mode === "register"
+                      ? "Use at least 8 characters for a strong password."
+                      : ""
+                  }
+                  disabled={submitting}
+                />
+              </>
+            )}
+
+            {mode === "far_customer" && (
+              <TextField
+                label="Customer ID"
+                name="customerId"
+                value={form.customerId}
+                onChange={handleInputChange}
+                required
+                fullWidth
+                margin="normal"
+                disabled={submitting}
+                helperText="Use Customer ID from the dataset"
+              />
+            )}
+
 
             <Button
               type="submit"
@@ -143,7 +180,9 @@ const Login = () => {
               sx={{ mt: 2 }}
               disabled={submitting}
             >
-              {mode === "login" ? "Sign In" : "Create Account"}
+              {mode === "login" ? "Sign In" 
+                : mode === "register" ? "Create Account" 
+                : "Sign In with Customer ID"}
             </Button>
           </Box>
         </CardContent>

@@ -58,6 +58,17 @@ def issue_token_pair(user: User) -> Tuple[str, str]:
   return access, refresh
 
 
+def issue_far_customer_token(customer_id: str) -> str:
+  claims = {
+    "mode": "dataset",
+    "customer_id": customer_id
+  }
+  access_token = create_access_token(
+    subject = customer_id,
+    additional_claims = claims
+  )
+  return access_token
+
 def _verify_google_token(id_token: str) -> dict:
   if not settings.google_client_id:
     raise HTTPException(

@@ -26,7 +26,7 @@ export const jsonRequest = async (path, { method = "GET", headers = {}, body, to
   const text = await response.text();
   try {
     payload = text ? JSON.parse(text) : null;
-  } catch (err) {
+  } catch {
     payload = null;
   }
 

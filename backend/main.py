@@ -1,7 +1,8 @@
 import logging
-
+import os
 import nltk
 import uvicorn
+import pandas as pd
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -13,13 +14,67 @@ from controllers import (
     sentiment_controller,
     yfinance_controller,
 )
-from database import Base, engine
+from database import Base, engine, SessionLocal
+from models.far_customers import FarCustomer, FarTransaction
 
 def ensure_vader():
     try:
         nltk.data.find('sentiment/vader_lexicon.zip')
     except LookupError:
         nltk.download('vader_lexicon', quiet=True)
+
+def load_dataset_into_db():
+    db = SessionLocal()
+    try:
+        # If we can find the first far-trans customer, means dataset is already loaded
+        already_loaded = db.query(FarCustomer).first()
+        if already_loaded:
+            return
+        
+        # Load CSVs
+        customers_path = os.path.join("datasets", "customer_information.csv")
+        transactions_path = os.path.join("datasets", "transactions.csv")
+
+        if not os.path.exists(customers_path) or not os.path.exists(transactions_path):
+            logging.warning(
+                "Dataset CSVs not found in ./datasets, skipping dataset bootstrap"
+            )
+            return
+        
+        customers_df = pd.read_csv(customers_path)
+        transactions_df = pd.read_csv(transactions_path)
+
+        # Insert customers and transactions
+        for _, row in customers_df.iterrows():
+            customer_id = str(row["customerID"]).strip()
+            db.add(
+                FarCustomer(
+                    customer_id = customer_id
+                )
+            )
+
+        for _, row in transactions_df.iterrows():
+            db.add(
+                FarTransaction(
+                    customer_id = str(row["customerID"]).strip(),
+                    transaction_id = str(row["transactionID"]),
+                    transaction_type = row["transactionType"],
+                    timestamp = row["timestamp"],
+                    symbol = row["ISIN"],
+                    company_name = None,
+                    shares = row["units"],
+                    price = None,
+                    total_value = row["totalValue"],
+                )
+            )
+
+        db.commit()
+        logging.info("Loaded FAR-TRANS customers and transactions into DB")
+
+    except Exception as e:
+        logging.exception(f"Failed to load FAR-TRANS dataset CSVs into DB: {e}")
+    finally:
+        db.close()
 
 # configure logging
 logging.basicConfig(
@@ -43,9 +98,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.on_event("startup")
-def startup_event():
+def on_startup():
+    logging.info("Running startup tasks...")
     ensure_vader()
+    logging.info("VADER lexicon ensured.")
+
+    # Create tables for all models
+    Base.metadata.create_all(bind=engine)
+    logging.info("Database tables created")
+
+    load_dataset_into_db()
+    logging.info("Dataset bootstrap complete")
+
 
 # ROUTERS HERE
 # include routers
@@ -56,9 +122,6 @@ app.include_router(dataset_timeseries_controller.router)
 app.include_router(far_controller.router)
 app.include_router(sentiment_controller.router)
 
-@app.on_event("startup")
-def on_startup():
-    Base.metadata.create_all(bind=engine)
 
 @app.get("/")
 async def root():
@@ -67,6 +130,7 @@ async def root():
         "status": "healthy",
         "message": "Stock Portfolio API with real-time Yahoo Finance data is running"
     }
+
 
 @app.get("/health")
 async def health_check():
