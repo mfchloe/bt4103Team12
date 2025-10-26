@@ -180,9 +180,7 @@ const Login = () => {
               sx={{ mt: 2 }}
               disabled={submitting}
             >
-              {mode === "login" ? "Sign In" 
-                : mode === "register" ? "Create Account" 
-                : "Sign In with Customer ID"}
+              {mode === "register" ? "Create Account" : "Sign In"}
             </Button>
           </Box>
         </CardContent>
