@@ -211,35 +211,6 @@ const Home = () => {
           </Box>
         </Box>
 
-        {/* <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            mb: 2,
-          }}
-        >
-          <Typography variant="h4" sx={styles.header}>
-            My Portfolio
-          </Typography>
-          
-          <Button
-            onClick={() => navigate("/transactions")}
-            sx={styles.txButtonTop}
-            variant="contained"
-          >
-            My Transactions
-          </Button>
-
-          <Button
-            onClick={() => navigate("/myCharts")}
-            sx={styles.txButtonTop}
-            variant="contained"
-          >
-            My Charts
-          </Button>
-        </Box> */}
-
         {apiError && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {apiError}
