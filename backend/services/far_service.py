@@ -531,16 +531,17 @@ def get_scatter_sample(filters: dict, limit: int = 5000) -> dict:
     if cust_f.empty:
         return {"rows": []}
     # choose columns if present
-    cols = [c for c in ["days_since_last_buy", "avg_transactions_per_month", "investor_type", "portfolio_value"] if c in cust_f.columns]
-    sample = cust_f[cols].dropna().sample(n=min(limit, len(cust_f)), random_state=42) if cols else pd.DataFrame()
+    cols = [c for c in ["days_since_last_buy", "avg_transactions_per_month", "investor_type", "current_net_cash_flow"] if c in cust_f.columns]
+    sample = cust_f[cols].dropna()
     rows = []
     for _, r in sample.iterrows():
         rows.append({
-            "days_since_last_buy": float(r.get("days_since_last_buy")) if "days_since_last_buy" in sample.columns else None,
-            "avg_transactions_per_month": float(r.get("avg_transactions_per_month")) if "avg_transactions_per_month" in sample.columns else None,
-            "investor_type": r.get("investor_type") if "investor_type" in sample.columns else None,
-            "portfolio_value": float(r.get("portfolio_value")) if "portfolio_value" in sample.columns else None,
+            "days_since_last_buy": r.get("days_since_last_buy"),
+            "avg_transactions_per_month": r.get("avg_transactions_per_month"),
+            "investor_type": r.get("investor_type"),
+            "portfolio_value": r.get("current_net_cash_flow"),  # use actual column
         })
+
     return {"rows": rows}
 
 

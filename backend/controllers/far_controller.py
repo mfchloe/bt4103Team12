@@ -90,6 +90,7 @@ def investor_type_breakdown(req: MetricsRequest):
     cust_f = far_service._apply_filters(cust, req.filters.model_dump(exclude_none=True))  # type: ignore
     counts = cust_f["investor_type"].value_counts()
     rows = [{"label": k, "value": int(v)} for k, v in counts.items()]
+    
     return _clean({"rows": rows})
 
 

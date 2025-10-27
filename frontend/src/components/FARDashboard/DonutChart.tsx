@@ -14,8 +14,9 @@ interface DonutChartProps {
   colors?: string[];
   innerRadius?: number;
   outerRadius?: number;
-  height?: number; // <- new
+  height?: number;
   onSelect?: (label: string) => void;
+  selected?: string[]; // <- add this
 }
 
 export const DonutChart = ({
@@ -24,8 +25,9 @@ export const DonutChart = ({
   colors = ["#1976d2", "#42a5f5", "#90caf9", "#0d47a1", "#ff9800", "#f44336"],
   innerRadius = 60,
   outerRadius = 90,
-  height = 280, // default
+  height = 280,
   onSelect,
+  selected = [], // <- default empty
 }: DonutChartProps) => {
   const chartData = (data || []).map((d, idx) => ({
     name: d.label,
@@ -36,11 +38,7 @@ export const DonutChart = ({
   return (
     <Card sx={{ transition: "all 0.3s", "&:hover": { boxShadow: 3 } }}>
       <CardHeader
-        title={
-          <Typography variant="h6" fontWeight={600}>
-            {title}
-          </Typography>
-        }
+        title={<Typography variant="h6" fontWeight={600}>{title}</Typography>}
       />
       <CardContent>
         <Box sx={{ height }}>
@@ -56,18 +54,20 @@ export const DonutChart = ({
                 outerRadius={outerRadius}
                 paddingAngle={2}
                 onClick={(d) => onSelect?.(d?.name)}
-                style={{
-                  cursor: onSelect ? "pointer" : "default",
-                  outline: "none",
-                }}
+                style={{ cursor: onSelect ? "pointer" : "default", outline: "none" }}
               >
-                {chartData.map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={entry.fill}
-                    strokeWidth={2}
-                  />
-                ))}
+                {chartData.map((entry, index) => {
+                  const isSelected = selected.includes(entry.name);
+                  return (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.fill}
+                      stroke={isSelected ? "#000" : "none"} // highlight
+                      strokeWidth={isSelected ? 3 : 0}
+                      opacity={selected.length > 0 && !isSelected ? 0.4 : 1} // dim others
+                    />
+                  );
+                })}
               </Pie>
               <Tooltip />
               <Legend verticalAlign="bottom" height={36} iconType="circle" />
@@ -78,3 +78,4 @@ export const DonutChart = ({
     </Card>
   );
 };
+
