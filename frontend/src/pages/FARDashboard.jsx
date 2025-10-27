@@ -1,24 +1,30 @@
-import { useEffect, useMemo, useRef } from "react";
-import { Container, Box, Typography } from "@mui/material";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Container,
+  Box,
+  Typography,
+  Tabs,
+  Tab,
+  Paper,
+  Stack,
+} from "@mui/material";
 import PeopleIcon from "@mui/icons-material/People";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
-import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
-import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import ShowChartIcon from "@mui/icons-material/ShowChart";
 import PieChartIcon from "@mui/icons-material/PieChart";
+
 import StatCard from "../components/StatCard";
-import { FilterSidebar } from "../components/FARDashboard/FilterSideBar";
+import { FilterChartsPanel } from "../components/FARDashboard/FilterChartsPanel";
 import { DonutChart } from "../components/FARDashboard/DonutChart";
 import { HistogramCard } from "../components/FARDashboard/HistogramCard";
 import { CategoryBarCard } from "../components/FARDashboard/CategoryBarCard";
 import { TopAssetsTable } from "../components/FARDashboard/TopAssetsTable";
 import { ActivityLineChart } from "../components/FARDashboard/ActivityLineChart";
+import { ScatterChartCard } from "../components/FARDashboard/ScatterChartCard";
 import { useApi } from "../hooks/useApi";
-import { useSessionStorageState } from "../hooks/useSessionStorageState";
 
 const createDefaultFilters = () => ({
   customer_type: [],
-  investor_type: [],
   risk_level: [],
   sectors: [],
   investmentCapacity: { minimum: 0, maximum: 300000 },
@@ -27,62 +33,32 @@ const createDefaultFilters = () => ({
   search_query: "",
 });
 
-const FARDashboard = () => {
-  const [filters, setFilters] = useSessionStorageState(
-    "far-dashboard:filters",
-    createDefaultFilters()
-  );
-  const [selectedAsset, setSelectedAsset] = useSessionStorageState(
-    "far-dashboard:selected-asset",
-    null
-  );
-
+export default function FARDashboard() {
+  const [filters, setFilters] = useState(createDefaultFilters());
+  const [selectedAsset, setSelectedAsset] = useState(null);
+  const [activeTab, setActiveTab] = useState(0);
   const hasHydratedFilters = useRef(false);
 
   useEffect(() => {
-    // Ensure new filter keys are added for users with older sessionStorage
     if (hasHydratedFilters.current) return;
     hasHydratedFilters.current = true;
     setFilters((prev) => ({ ...createDefaultFilters(), ...prev }));
-  }, [setFilters]);
+  }, []);
 
-  // Convert slider range to categorical investment capacity values
-  // Convert slider range to categorical investment capacity values
   const convertRangeToCategorical = (min, max) => {
     const categories = [];
-
-    // CAP_LT30K: < 30,000
-    if (min < 30000) {
-      categories.push("CAP_LT30K");
-    }
-
-    // CAP_30K_80K: 30,000 - 80,000
-    if (min < 80000 && max >= 30000) {
-      categories.push("CAP_30K_80K");
-    }
-
-    // CAP_80K_300K: 80,000 - 300,000
-    if (min < 300000 && max >= 80000) {
-      categories.push("CAP_80K_300K");
-    }
-
-    // CAP_GT300K: > 300,000
-    if (max >= 300000) {
-      categories.push("CAP_GT300K");
-    }
-
+    if (min < 30000) categories.push("CAP_LT30K");
+    if (min < 80000 && max >= 30000) categories.push("CAP_30K_80K");
+    if (min < 300000 && max >= 80000) categories.push("CAP_80K_300K");
+    if (max >= 300000) categories.push("CAP_GT300K");
     return categories;
   };
 
-  // Prepare filters with converted investment capacity
   const backendFilters = useMemo(() => {
     const { investmentCapacity, ...otherFilters } = filters;
-
-    // Only add investment_capacity if the range is not the default (0-300000)
     const isDefaultRange =
       investmentCapacity?.minimum === 0 &&
       investmentCapacity?.maximum === 300000;
-
     const investment_capacity =
       investmentCapacity && !isDefaultRange
         ? convertRangeToCategorical(
@@ -91,69 +67,74 @@ const FARDashboard = () => {
           )
         : undefined;
 
-    // Clean up the filters - remove empty arrays and null date ranges
     const cleanedFilters = {};
-
-    for (const [key, value] of Object.entries(otherFilters)) {
-      if (key === "date_range") {
-        // Only include date_range if start or end is set
-        if (value && (value.start || value.end)) {
-          cleanedFilters[key] = value;
-        }
-      } else if (Array.isArray(value)) {
-        // Only include arrays that have items
-        if (value.length > 0) {
-          cleanedFilters[key] = value;
-        }
+    Object.entries(otherFilters).forEach(([key, value]) => {
+      if (key === "date_range" && (value.start || value.end)) {
+        cleanedFilters[key] = value;
+      } else if (Array.isArray(value) && value.length > 0) {
+        cleanedFilters[key] = value;
       } else if (value !== null && value !== undefined && value !== "") {
         cleanedFilters[key] = value;
       }
-    }
-
-    if (investment_capacity && investment_capacity.length > 0) {
+    });
+    if (investment_capacity?.length)
       cleanedFilters.investment_capacity = investment_capacity;
-    }
-
-    // Debug: Log the filters being sent
-    console.log("Backend filters:", cleanedFilters);
-
     return cleanedFilters;
   }, [filters]);
-  // const body = useMemo(() => ({ filters }), [filters]);
+
   const body = useMemo(() => ({ filters: backendFilters }), [backendFilters]);
 
-  // Core metrics
+  // API calls
+  const { data: customerTypeData } = useApi("/api/far/category-breakdown", {
+    filters: {},
+    column: "customerType",
+  });
+
+  const { data: riskLevelData } = useApi("/api/far/category-breakdown", {
+    filters: {},
+    column: "riskLevel",
+  });
+
   const { data: metrics } = useApi("/api/far/metrics", body);
-  // Top assets
   const { data: topAssets } = useApi("/api/far/top-assets", {
     ...body,
     top_n: 15,
   });
-  // Industry preferences
   const { data: industryPrefs } = useApi("/api/far/category-breakdown", {
     ...body,
     column: "preferred_industry",
     top_n: 7,
   });
-  // Investor type breakdown
   const { data: investorBreakdown } = useApi(
     "/api/far/investor-type-breakdown",
     body
   );
-  // Trading activity histogram
   const { data: activityHist } = useApi("/api/far/histogram", {
     ...body,
     column: "trading_activity_ratio",
     bins: 30,
   });
-  // Activity over time
   const { data: activitySeries } = useApi("/api/far/activity-series", body);
   const { data: assetCategoryData } = useApi("/api/far/category-breakdown", {
     ...body,
     column: "preferred_asset_category",
   });
-  console.log(assetCategoryData);
+  const { data: assetSubcategories } = useApi("/api/far/category-breakdown", {
+    ...body,
+    column: "preferred_subcategory",
+  });
 
+  const { data: portfolioDiversification } = useApi("/api/far/histogram", {
+    ...body,
+    column: "current_diversification_score",
+    bins: 20,
+  });
+  const { data: investmentVsTransactions } = useApi("/api/far/scatter-sample", {
+    ...body,
+    limit: 500,
+  });
+
+  console.log(investmentVsTransactions);
   const investorTypeData = useMemo(
     () => investorBreakdown?.rows || [],
     [investorBreakdown]
@@ -168,7 +149,6 @@ const FARDashboard = () => {
     setSelectedAsset(null);
   };
 
-  // Helper to safely format numbers
   const safeNumber = (num, decimals = 2) =>
     typeof num === "number" && !isNaN(num) ? num.toFixed(decimals) : "-";
 
@@ -202,19 +182,16 @@ const FARDashboard = () => {
             value={metrics?.customers ?? "-"}
             icon={PeopleIcon}
           />
-
           <StatCard
             title="Avg Transactions/Week"
             value={safeNumber(metrics?.avg_transactions_per_week)}
             icon={ShowChartIcon}
           />
-
           <StatCard
             title="Avg Trading Activity Ratio"
             value={safeNumber(metrics?.avg_trading_activity_ratio)}
             icon={PieChartIcon}
           />
-
           <StatCard
             title="Total Industries Bought"
             value={metrics?.total_industries_bought ?? "-"}
@@ -222,75 +199,99 @@ const FARDashboard = () => {
           />
         </Box>
 
-        {/* Main Content Grid */}
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", lg: "320px 1fr" },
-            gap: 3,
-          }}
-        >
-          {/* Filter Sidebar */}
-          <Box>
-            <FilterSidebar
+        <Box sx={{ display: "flex", gap: 3, mt: 3 }}>
+          {/* Sidebar Filters */}
+          <Box sx={{ width: 300, flexShrink: 0 }}>
+            <FilterChartsPanel
               filters={filters}
               setFilters={setFilters}
-              onReset={resetFilters}
+              resetFilters={resetFilters}
+              data={{
+                customerType: customerTypeData?.rows,
+                riskLevels: riskLevelData?.rows,
+              }}
             />
           </Box>
 
-          {/* Charts and Tables */}
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: { xs: "1fr", md: "2fr 3fr" },
-                gap: 3,
-              }}
-            >
-              <DonutChart
-                title="Investor Type Breakdown"
-                data={investorTypeData}
-                onSelect={(name) =>
-                  setFilters((f) => ({ ...f, investor_type: [name] }))
-                }
-              />
+          {/* Main Dashboard Content */}
+          <Box sx={{ flex: 1 }}>
+            {/* Section Tabs */}
+            <Paper>
+              <Tabs
+                value={activeTab}
+                onChange={(_, val) => setActiveTab(val)}
+                variant="scrollable"
+                scrollButtons="auto"
+              >
+                <Tab label="Investor Profile" />
+                <Tab label="Trading Behavior" />
+                <Tab label="Asset & Industry" />
+              </Tabs>
+            </Paper>
 
-              <HistogramCard
-                title="Trading Activity Distribution"
-                bins={activityHist?.bins}
-              />
+            {/* Tab Content */}
+            <Box sx={{ mt: 3 }}>
+              {activeTab === 0 && (
+                <Stack spacing={3}>
+                  <DonutChart
+                    title="Investor Type Breakdown"
+                    data={investorTypeData}
+                  />
+                  <DonutChart
+                    title="Asset Subcategory Breakdown"
+                    data={assetSubcategories?.rows || []}
+                    height={280}
+                  />
+                  <HistogramCard
+                    title="Portfolio Diversification"
+                    bins={portfolioDiversification?.bins || []}
+                  />
+                </Stack>
+              )}
+              {activeTab === 1 && (
+                <>
+                  <HistogramCard
+                    title="Trading Activity Distribution"
+                    bins={activityHist?.bins || []}
+                  />
+                  <Box sx={{ mt: 3 }}>
+                    <ActivityLineChart
+                      title="Customer Activity over Time"
+                      rows={activitySeries?.rows}
+                    />
+                  </Box>
+                  <Box sx={{ mt: 3 }}>
+                    <ScatterChartCard
+                      title="Investment vs Avg Transactions"
+                      data={investmentVsTransactions?.rows || []}
+                    />
+                  </Box>
+                </>
+              )}
+              {activeTab === 2 && (
+                <>
+                  <DonutChart
+                    title="Asset Category Breakdown"
+                    data={assetCategoryData?.rows || []}
+                  />
+                  <Box sx={{ mt: 3 }}>
+                    <CategoryBarCard
+                      title="Industry Preference"
+                      rows={industryPrefs?.rows}
+                    />
+                  </Box>
+                  <Box sx={{ mt: 3 }}>
+                    <TopAssetsTable
+                      rows={topAssets?.rows || []}
+                      onSelectAsset={setSelectedAsset}
+                    />
+                  </Box>
+                </>
+              )}
             </Box>
-
-            <Box sx={{ mb: 3 }}>
-              <ActivityLineChart
-                title="Customer Activity over Time"
-                rows={activitySeries?.rows}
-              />
-            </Box>
-            <DonutChart
-              title="Asset Category Breakdown"
-              data={assetCategoryData?.rows ?? []}
-              colors={["#0088FE", "#00C49F", "#FFBB28", "#FF8042"]}
-              onSelect={(category) =>
-                setFilters((f) => ({ ...f, asset_category: [category] }))
-              }
-              height={280}
-            />
-
-            <CategoryBarCard
-              title="Industry Preference"
-              rows={industryPrefs?.rows}
-            />
-            <TopAssetsTable
-              rows={topAssets?.rows || []}
-              onSelectAsset={setSelectedAsset}
-            />
           </Box>
         </Box>
       </Container>
     </Box>
   );
-};
-
-export default FARDashboard;
+}
