@@ -182,9 +182,36 @@ const Home = () => {
   );
 
   return (
+    
     <Box sx={styles.container}>
       <Box sx={{ maxWidth: 1200, mx: "auto" }}>
-        <Box
+        {/* Header Row */}
+        <Box sx={styles.topBar}>
+          <Typography variant="h4" sx={styles.header}>
+            My Portfolio
+          </Typography>
+
+          {/* Button group on the top-right */}
+          <Box sx={styles.txButtonsGroup}>
+            <Button
+              onClick={() => navigate("/transactions")}
+              sx={styles.txButtonTop}
+              variant="contained"
+            >
+              My Transactions
+            </Button>
+
+            <Button
+              onClick={() => navigate("/myCharts")}
+              sx={styles.txButtonTop}
+              variant="contained"
+            >
+              My Charts
+            </Button>
+          </Box>
+        </Box>
+
+        {/* <Box
           sx={{
             display: "flex",
             alignItems: "center",
@@ -211,10 +238,7 @@ const Home = () => {
           >
             My Charts
           </Button>
-
-
-
-        </Box>
+        </Box> */}
 
         {apiError && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -331,4 +355,21 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
   },
+  topBar: {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  mb: 2,
+  flexWrap: "wrap", // makes it responsive
+  },
+  txButtonsGroup: {
+    display: "flex",
+    gap: 2,
+    ml: "auto",
+  },
+  txButtonTop: {
+    bgcolor: "#305D9E",
+    "&:hover": { bgcolor: "#254a7d" },
+  },
+
 };
