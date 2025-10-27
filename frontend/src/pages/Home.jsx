@@ -13,6 +13,7 @@ import RecommendationsDialog from "../components/home/RecommendationsDialog";
 import AddStockDialog from "../components/home/AddStockDialog";
 import PortfolioChart from "../components/home/PortfolioChart";
 import StatsSection from "../components/home/StatsSection";
+import UserProfileDialog from "../components/home/UserProfileDialog.jsx";
 import {
   calculateTotalValue,
   calculateTotalPL,
@@ -22,6 +23,8 @@ import {
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiBaseUrl } from "../api/httpClient.js";
 import dayjs from "dayjs";
+import { db } from "../../firebase.jsx";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 
 const STOCK_PRICE_API_URL = `${apiBaseUrl}/api/yfinance/batch`;
 
@@ -31,10 +34,14 @@ const Home = () => {
   const [apiError, setApiError] = useState(null);
   const [showRecommendations, setShowRecommendations] = useState(false);
   const [showAddStock, setShowAddStock] = useState(false);
-  const { authFetch, isAuthenticated } = useAuth();
+  const { authFetch, isAuthenticated, currentUser } = useAuth();
   const navigate = useNavigate();
 
   const portfolioRef = useRef(portfolio);
+
+  const [showProfileDialog, setShowProfileDialog] = useState(false);
+  const [profileInitial, setProfileInitial] = useState(null);
+  const checkedProfileRef = useRef(false);
 
   useEffect(() => {
     portfolioRef.current = portfolio;
@@ -173,6 +180,55 @@ const Home = () => {
     [authFetch]
   );
 
+  useEffect(() => {
+    // Only run once per mount after auth is ready
+    if (!isAuthenticated || !currentUser?.uid || checkedProfileRef.current)
+      return;
+
+    const run = async () => {
+      try {
+        const ref = doc(db, "users", currentUser.uid);
+        const snap = await getDoc(ref);
+
+        if (!snap.exists()) {
+          // brand new user — show dialog
+          setProfileInitial(null);
+          setShowProfileDialog(true);
+        } else {
+          const data = snap.data() || {};
+          const hasAll =
+            data.investorType &&
+            data.customerType &&
+            data.riskLevel &&
+            typeof data.diversificationScore === "number" &&
+            data.investmentCapacity;
+
+          setProfileInitial({
+            investorType: data.investorType || "",
+            customerType: data.customerType || "",
+            riskLevel: data.riskLevel || "",
+            diversificationScore:
+              typeof data.diversificationScore === "number"
+                ? data.diversificationScore
+                : undefined,
+            investmentCapacity: data.investmentCapacity || "",
+          });
+
+          if (!hasAll || data.profileCompleted === false) {
+            setShowProfileDialog(true);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to check user profile:", e);
+        // Fail-open: don’t block portfolio; you can optionally show a toast here.
+      } finally {
+        checkedProfileRef.current = true;
+      }
+    };
+
+    run();
+  }, [isAuthenticated, currentUser?.uid]);
+
   const handleAddRecommendation = useCallback(
     async (stock) => {
       await handleAddStock(stock);
@@ -181,8 +237,22 @@ const Home = () => {
     [handleAddStock]
   );
 
+  const handleSaveProfile = async (payload) => {
+    const ref = doc(db, "users", currentUser.uid);
+    await setDoc(
+      ref,
+      {
+        ...payload,
+        profileCompleted: true,
+        updatedAt: serverTimestamp(),
+        // Add createdAt if new doc
+        createdAt: profileInitial ? undefined : serverTimestamp(),
+      },
+      { merge: true }
+    );
+  };
+
   return (
-    
     <Box sx={styles.container}>
       <Box sx={{ maxWidth: 1200, mx: "auto" }}>
         {/* Header Row */}
@@ -277,6 +347,12 @@ const Home = () => {
           currentPortfolio={portfolio}
         />
       </Box>
+      <UserProfileDialog
+        open={showProfileDialog}
+        onClose={() => setShowProfileDialog(false)}
+        onSave={handleSaveProfile}
+        initial={profileInitial}
+      />
     </Box>
   );
 };
@@ -327,11 +403,11 @@ const styles = {
     justifyContent: "center",
   },
   topBar: {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  mb: 2,
-  flexWrap: "wrap", // makes it responsive
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    mb: 2,
+    flexWrap: "wrap", // makes it responsive
   },
   txButtonsGroup: {
     display: "flex",
@@ -342,5 +418,4 @@ const styles = {
     bgcolor: "#305D9E",
     "&:hover": { bgcolor: "#254a7d" },
   },
-
 };
