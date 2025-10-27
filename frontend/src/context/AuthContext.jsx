@@ -17,6 +17,8 @@ import {
 } from "firebase/auth";
 import { auth } from "../../firebase";
 import { apiBaseUrl } from "../api/httpClient.js";
+import { db } from "../../firebase";
+import { doc, setDoc, serverTimestamp, getDoc } from "firebase/firestore";
 
 const AuthContext = createContext(undefined);
 
@@ -63,7 +65,7 @@ export const AuthProvider = ({ children }) => {
     const res = await fetch(`${apiBaseUrl}/api/auth/far-customer-login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customer_id: customerId })
+      body: JSON.stringify({ customer_id: customerId }),
     });
 
     const payloadText = await res.text();
@@ -79,13 +81,15 @@ export const AuthProvider = ({ children }) => {
     }
 
     if (!res.ok) {
-      throw new Error(payload?.detail || payload?.message || "Invalid Customer ID");
+      throw new Error(
+        payload?.detail || payload?.message || "Invalid Customer ID"
+      );
     }
 
     const newSession = {
       mode: payload.mode || "dataset",
       customerId: payload.customer_id,
-      accessToken: payload.access_token
+      accessToken: payload.access_token,
     };
 
     setUser(null);
@@ -111,6 +115,24 @@ export const AuthProvider = ({ children }) => {
     if (displayName) {
       await updateProfile(userCredential.user, { displayName });
     }
+
+    // Create/ensure the Firestore user doc
+    const { uid } = userCredential.user;
+    const userRef = doc(db, "users", uid);
+    const snap = await getDoc(userRef);
+    if (!snap.exists()) {
+      await setDoc(userRef, {
+        uid,
+        email,
+        displayName: displayName || userCredential.user.displayName || "",
+        profileCompleted: false, // Home dialog will flip this to true
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(userRef, { updatedAt: serverTimestamp() }, { merge: true });
+    }
+
     const token = await getIdToken(userCredential.user, true);
 
     setFarCustomerSession(null);
@@ -135,7 +157,7 @@ export const AuthProvider = ({ children }) => {
     setFarCustomerSession(null);
     if (typeof window !== "undefined") {
       window.sessionStorage.removeItem("farCustomerSession");
-    } 
+    }
   }, []);
 
   // ---- Refresh token (Firebase handles automatically, but we can force refresh) ----
@@ -147,84 +169,93 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   // ---- Protected fetch helper ----
-  const authFetch = useCallback(async (path, options = {}) => {
-    const buildUrl = (maybeRelative) =>
-      /^https?:\/\//i.test(maybeRelative)
-        ? maybeRelative
-        : `${apiBaseUrl}${maybeRelative}`;
+  const authFetch = useCallback(
+    async (path, options = {}) => {
+      const buildUrl = (maybeRelative) =>
+        /^https?:\/\//i.test(maybeRelative)
+          ? maybeRelative
+          : `${apiBaseUrl}${maybeRelative}`;
 
-    const getActiveToken = async () =>  {
-      if (farCustomerSession?.accessToken) {
-        return farCustomerSession.accessToken;
-      }
-      if (!auth.currentUser) {
-        const err = new Error("Not authenticated");
-        err.status = 401;
-        throw err;
-      }
-      return getIdToken(auth.currentUser, false);
-    };
-
-    const serializeBody = (bodyValue, headers) => {
-      if (!bodyValue) return undefined;
-      if (bodyValue instanceof FormData) return bodyValue;
-      if (typeof bodyValue === "string") return bodyValue;
-      headers.set("Content-Type", "application/json");
-      return JSON.stringify(bodyValue);
-    };
-
-    const performRequest = async (tokenValue) => {
-      const headers = new Headers(options.headers || {});
-      headers.set("Authorization", `Bearer ${tokenValue}`);
-
-      const requestInit = {
-        ...options,
-        headers,
-        body: serializeBody(options.body, headers),
+      const getActiveToken = async () => {
+        if (farCustomerSession?.accessToken) {
+          return farCustomerSession.accessToken;
+        }
+        if (!auth.currentUser) {
+          const err = new Error("Not authenticated");
+          err.status = 401;
+          throw err;
+        }
+        return getIdToken(auth.currentUser, false);
       };
 
-      const response = await fetch(buildUrl(path), requestInit);
-      const text = await response.text();
-      let payload = null;
+      const serializeBody = (bodyValue, headers) => {
+        if (!bodyValue) return undefined;
+        if (bodyValue instanceof FormData) return bodyValue;
+        if (typeof bodyValue === "string") return bodyValue;
+        headers.set("Content-Type", "application/json");
+        return JSON.stringify(bodyValue);
+      };
 
-      if (text) {
-        try {
-          payload = JSON.parse(text);
-        } catch {
-          const friendly = new Error("Received unexpected response from server.");
-          friendly.status = response.status;
-          friendly.raw = text;
-          throw friendly;
+      const performRequest = async (tokenValue) => {
+        const headers = new Headers(options.headers || {});
+        headers.set("Authorization", `Bearer ${tokenValue}`);
+
+        const requestInit = {
+          ...options,
+          headers,
+          body: serializeBody(options.body, headers),
+        };
+
+        const response = await fetch(buildUrl(path), requestInit);
+        const text = await response.text();
+        let payload = null;
+
+        if (text) {
+          try {
+            payload = JSON.parse(text);
+          } catch {
+            const friendly = new Error(
+              "Received unexpected response from server."
+            );
+            friendly.status = response.status;
+            friendly.raw = text;
+            throw friendly;
+          }
         }
+
+        return { response, payload };
+      };
+
+      const tokenToUse = await getActiveToken();
+      let { response, payload } = await performRequest(tokenToUse);
+
+      if (response.status === 401 && !farCustomerSession?.accessToken) {
+        const refreshedToken = await getIdToken(auth.currentUser, true).catch(
+          () => null
+        );
+        if (!refreshedToken) {
+          const error = new Error("Session expired. Please log in again.");
+          error.status = 401;
+          throw error;
+        }
+        ({ response, payload } = await performRequest(refreshedToken));
       }
 
-      return { response, payload };
-    };
-
-    const tokenToUse = await getActiveToken();
-    let { response, payload } = await performRequest(tokenToUse);
-
-    if (response.status === 401 && !farCustomerSession?.accessToken) {
-      const refreshedToken = await getIdToken(auth.currentUser, true).catch(() => null);
-      if (!refreshedToken) {
-        const error = new Error("Session expired. Please log in again.");
-        error.status = 401;
+      if (!response.ok) {
+        const error = new Error(
+          payload?.detail ||
+            payload?.message ||
+            `Request failed: ${response.status}`
+        );
+        error.status = response.status;
+        error.payload = payload;
         throw error;
       }
-      ({ response, payload } = await performRequest(refreshedToken));
-    }
 
-    if (!response.ok) {
-      const error = new Error(
-        payload?.detail || payload?.message || `Request failed: ${response.status}`
-      );
-      error.status = response.status;
-      error.payload = payload;
-      throw error;
-    }
-
-    return payload;
-  }, [farCustomerSession]);
+      return payload;
+    },
+    [farCustomerSession]
+  );
 
   // ---- Restore session (Firebase handles persistence automatically) ----
   useEffect(() => {
@@ -264,13 +295,13 @@ export const AuthProvider = ({ children }) => {
     return unsubscribe;
   }, []);
 
-
   const isFarCustomer = Boolean(farCustomerSession?.accessToken);
   const isFirebaseUser = Boolean(user && accessToken);
 
   const value = useMemo(
     () => ({
       user,
+      currentUser: user,
       accessToken,
       farCustomerSession,
       loading,
