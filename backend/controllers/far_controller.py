@@ -50,6 +50,12 @@ def list_datasets():
     })
 
 
+@router.get("/transactions/{customer_id}")
+def get_transactions(customer_id: str):
+    rows = far_service.get_customer_transactions(customer_id)
+    return _clean({"items": rows})
+
+
 @router.post("/metrics")
 def metrics(req: MetricsRequest):
     return _clean(far_service.get_metrics(req.filters.model_dump(exclude_none=True)))

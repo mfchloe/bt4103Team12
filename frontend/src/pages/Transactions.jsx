@@ -1,59 +1,70 @@
-import { useEffect, useState } from "react";
-import { Box, Typography, Paper, Stack, TextField } from "@mui/material";
+import { useEffect, useState, useMemo } from "react";
+import { Box, Typography, Paper, TextField } from "@mui/material";
 import TransactionsTable from "../components/home/TransactionsTable";
+import { useAuth } from "../context/AuthContext.jsx";
+import { apiBaseUrl } from "../api/httpClient";
 
-// Helper
-const USE_MOCK = true;
-
-const MOCK = [
-  { id: "7590224", side: "Buy", dt: "2020-03-27", symbol: "APPL", company: "Apple Inc.", shares: 5000, price: 2.2, total: 11000 },
-  { id: "7652627", side: "Sell", dt: "2020-05-07", symbol: "JPM", company: "JPMorgan Chase & Co.", shares: 5000, price: 2.54, total: 12700 },
-  { id: "11874149", side: "Sell", dt: "2022-07-04", symbol: "CRM", company: "Salesforce, Inc.", shares: 100, price: 1.24, total: 124 },
-  { id: "11874153", side: "Sell", dt: "2021-06-24", symbol: "MCD", company: "McDonald’s Corporation", shares: 150, price: 0.448, total: 67.2 },
-];
-
-async function fetchMyTransactions({ token, searchQuery = "", limit = 200, offset = 0 } = {}) {
-  if (USE_MOCK) {
-    const s = searchQuery.trim().toUpperCase();
-    const all = MOCK.filter(r =>
-      !s || r.symbol.toUpperCase().includes(s) || r.company.toUpperCase().includes(s)
-    );
-    return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
-  }
-  const params = new URLSearchParams({ searchQuery, limit: String(limit), offset: String(offset) });
-  const base = import.meta.env.VITE_API_BASE;
-  const res = await fetch(`${base}/api/transactions/mine?${params}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
-
-// Transactions Page
 export default function Transactions() {
-  const token = localStorage.getItem("token") || undefined;
-
+  const { isFirebaseUser, isFarCustomer, farCustomerSession } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
-  const [data, setData] = useState({ items: [], total: 0, limit: 50, offset: 0 });
+  const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // fetch (mock data for now, to do backend later)
   useEffect(() => {
+    // Cold-start user -> No past transactions
+    if (!isFarCustomer || !farCustomerSession?.customerId) {
+      setAllRows([]);
+      return;
+    }
+
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const res = await fetchMyTransactions({ token, searchQuery, limit: 200, offset: 0 });
-        if (!cancelled) setData(res);
-      } catch (e) {
-        console.error(e);
-        if (!cancelled) setData({ items: [], total: 0, limit: 50, offset: 0 });
+        const res = await fetch(`${apiBaseUrl}/api/far/transactions/${farCustomerSession.customerId}`);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        const json = await res.json();
+        if (!cancelled) {
+          setAllRows(Array.isArray(json.items) ? json.items : []);
+        }
+      } catch (err) {
+        console.error("Failed to load transactions", err);
+        if (!cancelled) {
+          setAllRows([]);
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     })();
+
     return () => { cancelled = true; };
-  }, [searchQuery, token]);
+  }, [isFarCustomer, farCustomerSession]);
+
+
+  // Filter rows on search
+  const filteredRows = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return allRows;
+
+    return allRows.filter((r) => {
+      return (
+        (r.stock && r.stock.toLowerCase().includes(query)) ||
+        (r.category && r.category.toLowerCase().includes(query)) ||
+        (r.buy_sell && r.buy_sell.toLowerCase().includes(query))
+      );
+    });
+  }, [allRows, searchQuery]);
+
+
+  // Render paths
+  const showEmptyState = 
+    (isFirebaseUser && !isFarCustomer) || 
+    (isFarCustomer && !loading && filteredRows.length === 0);
 
   return (
     <Box sx={{ maxWidth: 1100, mx: "auto", p: 3 }}>
@@ -82,6 +93,7 @@ export default function Transactions() {
               backgroundColor: "#fff",
             },
           }}
+          disabled = {isFirebaseUser && !isFarCustomer}
         />
       </Box>
 
@@ -90,8 +102,12 @@ export default function Transactions() {
           <Box sx={{ p: 4, textAlign: "center", color: "text.secondary" }}>
             Loading…
           </Box>
+        ) : showEmptyState ? (
+          <Box sx={{ p: 6, textAlign: "center", color: "text.secondary" }}>
+            You don't have any transactions yet.
+          </Box>
         ) : (
-          <TransactionsTable rows={data.items} />
+          <TransactionsTable rows={filteredRows} />
         )}
       </Paper>
     </Box>

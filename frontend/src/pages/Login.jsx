@@ -167,7 +167,7 @@ const Login = () => {
                 fullWidth
                 margin="normal"
                 disabled={submitting}
-                helperText="Use Customer ID from the dataset"
+                helperText="Use Customer ID from customers dataset"
               />
             )}
 

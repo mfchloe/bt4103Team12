@@ -16,21 +16,15 @@ const App = () => {
     <BrowserRouter>
       <Routes>
         <Route element={<Layout />}>
-          <Route
-            path="/"
-            element={
-              <RequireAuth>
-                <Home />
-              </RequireAuth>
-            }
-          />
+          <Route path="/" element={ <RequireAuth> <Home /> </RequireAuth>} />
+          <Route path="/transactions" element={<RequireAuth> <Transactions /> </RequireAuth>} />
           <Route path="/timeseries" element={<TimeSeries />} />
           <Route path="/far-dashboard" element={<FARDashboard />} />
           <Route path="*" element={<NotFound />} />
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/myCharts" element={<MyCharts />} />
-          </Route>
-          <Route path="/login" element={<Login />} />
+        </Route>
+        <Route path="/login" element={<Login />} />
       </Routes>
     </BrowserRouter>
   );

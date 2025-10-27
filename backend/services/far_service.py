@@ -82,7 +82,6 @@ def _read_df(path: str) -> pd.DataFrame:
 
 
 @lru_cache(maxsize=1)
-@lru_cache(maxsize=1)
 def load_dataframes() -> Dict[str, pd.DataFrame]:
     paths = detect_datasets()
     dfs: Dict[str, pd.DataFrame] = {}
@@ -129,6 +128,114 @@ def reset_cache() -> None:
     except Exception:
         pass
 
+
+# Helper: Derive name of stock
+def _pick_stock(row):
+    short_name = row.get("assetShortName")
+    if isinstance(short_name, str) and short_name.strip():
+        return short_name.strip()
+    
+    long_name = row.get("assetName")
+    if isinstance(long_name, str) and long_name.strip():
+        return long_name.strip()
+    
+    isin = row.fer("ISIN")
+    if isinstance(isin, str):
+        return isin
+    
+    return ""
+
+
+# Helper: Compute category label of stock
+def _pick_category(row):
+    category = (row.get("assetCategory")).strip() if isinstance(row.get("assetCategory"), str) else ""
+    sub_category = (row.get("assetSubCategory") or "").strip() if isinstance(row.get("assetSubCategory"), str) else ""
+
+    if category and sub_category:
+        return f"{category} - {sub_category}"
+    if category:
+        return category
+    if sub_category:
+        return sub_category
+    return ""
+
+
+def get_customer_transactions(customer_id: str):
+    dfs = load_dataframes()
+    transactions_df = dfs.get("transactions")
+    assets_df = dfs.get("assets")
+
+    # Filter for this customer's transactions
+    if "customerID" not in transactions_df.columns:
+        return []
+    
+    tx_f = transactions_df[transactions_df["customerID"] == customer_id].copy()
+    if tx_f.empty:
+        return []
+    
+    # Merge asset metadata
+    merged = tx_f.merge(
+        assets_df[["ISIN", "assetShortName", "assetName", "assetCategory", "assetSubCategory"]],
+        on = "ISIN",
+        how = "left"
+    )
+    
+    rows = []
+    for _, r in merged.iterrows():
+        # ID
+        id = r.get("transactionID")
+
+        # Date (Normalised timestamp)
+        raw_timestamp = r.get("timestamp")
+        date = None
+        if pd.notnull(raw_timestamp):
+            timestamp = pd.to_datetime(raw_timestamp, errors="coerce")
+            if pd.notnull(timestamp):
+                date = timestamp.strftime("%Y-%m-%d")
+
+        # Stock
+        stock = _pick_stock(r)
+
+        # Category
+        category = _pick_category(r)
+
+        # Buy/Sell
+        buy_or_sell = r.get("transactionType")
+
+        # Shares
+        try:
+            shares = float(r.get("units"))
+        except (TypeError, ValueError):
+            shares = None
+
+        # Total ($)
+        try:
+            total_dollars = float(r.get("totalValue"))
+        except (TypeError, ValueError):
+            total_dollars = None
+
+        # Price per unit ($)
+        if shares and shares != 0 and total_dollars is not None:
+            price_per_unit = total_dollars / shares
+        else:
+            price_per_unit = None
+
+
+        rows.append({
+            "id": id,
+            "date": date,
+            "stock": stock,
+            "category": category,
+            "buy_sell": buy_or_sell,
+            "shares": shares,
+            "price": round(price_per_unit, 2) if price_per_unit is not None else None,
+            "total": round(total_dollars, 2) if total_dollars is not None else None
+        })
+
+        # Sort by date (newest first)
+        rows.sort(key = lambda x: (x["date"] or ""), reverse = True)
+
+        return rows
 
 # def _parse_capacity_to_value(capacity_str: Optional[str]) -> Optional[float]:
 #     if not isinstance(capacity_str, str):
