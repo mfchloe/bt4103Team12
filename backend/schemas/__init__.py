@@ -10,6 +10,7 @@ from .auth import (
   UserOut,
 )
 from .portfolio import PortfolioItemCreate, PortfolioItemUpdate, PortfolioItemOut
+from .dataset import DatasetRecommendationItem, DatasetRecommendationsResponse
 
 __all__ = [
   "RegisterRequest",
@@ -24,4 +25,6 @@ __all__ = [
   "PortfolioItemCreate",
   "PortfolioItemUpdate",
   "PortfolioItemOut",
+  "DatasetRecommendationItem",
+  "DatasetRecommendationsResponse",
 ]

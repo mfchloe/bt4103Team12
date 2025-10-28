@@ -668,7 +668,7 @@ const TimeSeries = () => {
               fontWeight: 600,
             }}
           >
-            Sharpe-Based Score:
+            Sentiment Score:
           </Typography>
           <Typography
             sx={{
@@ -877,5 +877,6 @@ const styles = {
     bgcolor: "#f9fafb",
   },
 };
+
 
 

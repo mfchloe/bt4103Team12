@@ -15,6 +15,7 @@ from controllers import (
     yfinance_controller,
 )
 from database import Base, engine, SessionLocal
+from database_migrations import ensure_portfolio_owner_columns
 from models.far_customers import FarCustomer, FarTransaction
 
 def ensure_vader():
@@ -108,6 +109,9 @@ def on_startup():
     # Create tables for all models
     Base.metadata.create_all(bind=engine)
     logging.info("Database tables created")
+
+    ensure_portfolio_owner_columns(engine)
+    logging.info("Database schema migrations complete")
 
     load_dataset_into_db()
     logging.info("Dataset bootstrap complete")

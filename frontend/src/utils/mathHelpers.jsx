@@ -1,49 +1,96 @@
 import dayjs from "dayjs";
 
-export const calculateStockStats = (stock) => {
-  if (stock.currentPrice === null || stock.currentPrice === undefined) {
-    return {
-      totalValue: null,
-      pl: null,
-      returnPercent: null,
-      isPositive: false,
-    };
-  }
+const toFiniteNumber = (value) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
 
-  const totalValue = stock.shares * stock.currentPrice;
-  const totalCost = stock.shares * stock.buyPrice;
-  const pl = totalValue - totalCost;
-  const returnPercent = (pl / totalCost) * 100;
+const resolveLastSeenPrice = (stock) => {
+  const sources = [
+    stock.lastSeenPrice,
+    stock.buyPrice,
+    stock.last_seen_price,
+    stock.buy_price,
+  ];
+  for (const candidate of sources) {
+    const parsed = toFiniteNumber(candidate);
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+  return null;
+};
+
+export const calculateStockStats = (stock) => {
+  const shares = toFiniteNumber(stock.shares) ?? 0;
+  const currentPrice = toFiniteNumber(stock.currentPrice);
+  const lastSeenPrice = resolveLastSeenPrice(stock);
+
+  const totalValue =
+    shares && currentPrice !== null ? shares * currentPrice : 0;
+
+  const pl =
+    shares && currentPrice !== null && lastSeenPrice !== null
+      ? (currentPrice - lastSeenPrice) * shares
+      : 0;
+
+  const returnPercent =
+    lastSeenPrice !== null && lastSeenPrice !== 0 && currentPrice !== null
+      ? ((currentPrice - lastSeenPrice) / lastSeenPrice) * 100
+      : 0;
+
   const isPositive = pl >= 0;
 
-  return { totalValue, pl, returnPercent, isPositive };
+  return {
+    totalValue,
+    pl,
+    returnPercent,
+    isPositive,
+    basisPrice: lastSeenPrice,
+  };
 };
 
 export const calculateSharpeRatio = (portfolio) => {
   if (!portfolio || portfolio.length === 0) return 0;
 
-  const totalValue = portfolio.reduce(
-    (sum, stock) => sum + stock.currentPrice * stock.shares,
-    0
+  const totals = portfolio.reduce(
+    (acc, stock) => {
+      const shares = toFiniteNumber(stock.shares) ?? 0;
+      const currentPrice = toFiniteNumber(stock.currentPrice);
+      const lastSeenPrice = resolveLastSeenPrice(stock);
+
+      if (!shares || currentPrice === null || lastSeenPrice === null) {
+        return acc;
+      }
+
+      const positionValue = shares * currentPrice;
+      const positionReturn =
+        lastSeenPrice !== 0
+          ? (currentPrice - lastSeenPrice) / lastSeenPrice
+          : 0;
+
+      acc.totalValue += positionValue;
+      acc.weightedReturns.push({ value: positionValue, ret: positionReturn });
+      return acc;
+    },
+    { totalValue: 0, weightedReturns: [] }
   );
 
-  if (!totalValue) return 0;
+  if (!totals.totalValue || totals.weightedReturns.length === 0) return 0;
 
-  const weightedReturns = portfolio.map((stock) => {
-    const buyPrice = Number(stock.buyPrice);
-    const currentPrice = Number(stock.currentPrice);
-    if (!buyPrice || !currentPrice) return 0;
-
-    const weight = (currentPrice * stock.shares) / totalValue;
-    const dailyReturn = (currentPrice - buyPrice) / buyPrice;
-    return dailyReturn * weight;
+  const weightedReturns = totals.weightedReturns.map((entry) => {
+    const weight = entry.value / totals.totalValue;
+    return entry.ret * weight;
   });
 
-  const portfolioReturn = weightedReturns.reduce((acc, value) => acc + value, 0);
+  const portfolioReturn = weightedReturns.reduce(
+    (acc, value) => acc + value,
+    0
+  );
   const mean = portfolioReturn;
   const variance =
     weightedReturns.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
-    weightedReturns.length;
+    (weightedReturns.length || 1);
   const volatility = Math.sqrt(variance);
 
   if (!volatility) return 0;
@@ -80,27 +127,37 @@ export const formatDate = (value) => {
 };
 
 export const calculateTotalCost = (portfolio) => {
-  return portfolio.reduce(
-    (sum, stock) => sum + stock.shares * stock.buyPrice,
-    0
-  );
+  return portfolio.reduce((sum, stock) => {
+    const shares = toFiniteNumber(stock.shares) ?? 0;
+    const basisPrice = resolveLastSeenPrice(stock);
+    if (basisPrice === null) return sum;
+    return sum + shares * basisPrice;
+  }, 0);
 };
 
 export const calculateTotalValue = (portfolio) => {
   return portfolio.reduce((sum, stock) => {
-    if (stock.currentPrice === null || stock.currentPrice === undefined) {
+    const { totalValue } = calculateStockStats(stock);
+    if (!Number.isFinite(totalValue)) {
       return sum;
     }
-    return sum + stock.shares * stock.currentPrice;
+    return sum + totalValue;
   }, 0);
 };
 
 export const calculateTotalPL = (portfolio) => {
-  return calculateTotalValue(portfolio) - calculateTotalCost(portfolio);
+  return portfolio.reduce((sum, stock) => {
+    const { pl } = calculateStockStats(stock);
+    if (!Number.isFinite(pl)) {
+      return sum;
+    }
+    return sum + pl;
+  }, 0);
 };
 
 export const calculateTotalReturn = (portfolio) => {
   const totalCost = calculateTotalCost(portfolio);
-  if (totalCost === 0) return 0;
-  return ((calculateTotalValue(portfolio) - totalCost) / totalCost) * 100;
+  if (!totalCost) return 0;
+  const totalPl = calculateTotalPL(portfolio);
+  return (totalPl / totalCost) * 100;
 };

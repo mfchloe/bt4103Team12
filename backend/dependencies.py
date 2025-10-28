@@ -39,7 +39,7 @@ def get_current_actor(token: str = Depends(oauth2_scheme), db: Session = Depends
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token (no subject)")
   
   # Far trans customer path
-  if mode == "far_customer":
+  if mode in {"far_customer", "dataset"}:
     far_customer = db.get(FarCustomerModel, subject)
     if far_customer is None:
       raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Far Trans customer not found")

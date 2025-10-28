@@ -60,7 +60,7 @@ def issue_token_pair(user: User) -> Tuple[str, str]:
 
 def issue_far_customer_token(customer_id: str) -> str:
   claims = {
-    "mode": "dataset",
+    "mode": "far_customer",
     "customer_id": customer_id
   }
   access_token = create_access_token(

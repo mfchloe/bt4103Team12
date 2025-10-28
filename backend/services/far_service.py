@@ -165,6 +165,12 @@ def get_customer_transactions(customer_id: str):
     transactions_df = dfs.get("transactions")
     assets_df = dfs.get("assets")
 
+    if transactions_df is None or transactions_df.empty:
+        return []
+
+    if assets_df is None:
+        assets_df = pd.DataFrame()
+
     # Filter for this customer's transactions
     if "customerID" not in transactions_df.columns:
         return []
@@ -174,12 +180,20 @@ def get_customer_transactions(customer_id: str):
         return []
     
     # Merge asset metadata
+    asset_columns = [col for col in ["ISIN", "assetShortName", "assetName", "assetCategory", "assetSubCategory"] if col in assets_df.columns]
+    if "ISIN" not in asset_columns:
+        asset_metadata = pd.DataFrame(columns=["ISIN"])
+    else:
+        asset_metadata = assets_df[asset_columns].copy()
+
     merged = tx_f.merge(
-        assets_df[["ISIN", "assetShortName", "assetName", "assetCategory", "assetSubCategory"]],
-        on = "ISIN",
-        how = "left"
+        asset_metadata,
+        on="ISIN",
+        how="left",
     )
     
+    cutoff = pd.Timestamp("2022-10-29", tz=None)
+
     rows = []
     for _, r in merged.iterrows():
         # ID
@@ -188,10 +202,14 @@ def get_customer_transactions(customer_id: str):
         # Date (Normalised timestamp)
         raw_timestamp = r.get("timestamp")
         date = None
+        timestamp = None
         if pd.notnull(raw_timestamp):
             timestamp = pd.to_datetime(raw_timestamp, errors="coerce")
             if pd.notnull(timestamp):
                 date = timestamp.strftime("%Y-%m-%d")
+
+        if timestamp is not None and pd.notnull(timestamp) and timestamp > cutoff:
+            continue
 
         # Stock
         stock = _pick_stock(r)
@@ -220,22 +238,23 @@ def get_customer_transactions(customer_id: str):
         else:
             price_per_unit = None
 
+        rows.append(
+            {
+                "id": id,
+                "date": date,
+                "stock": stock,
+                "category": category,
+                "buy_sell": buy_or_sell,
+                "shares": shares,
+                "price": round(price_per_unit, 2) if price_per_unit is not None else None,
+                "total": round(total_dollars, 2) if total_dollars is not None else None,
+            }
+        )
 
-        rows.append({
-            "id": id,
-            "date": date,
-            "stock": stock,
-            "category": category,
-            "buy_sell": buy_or_sell,
-            "shares": shares,
-            "price": round(price_per_unit, 2) if price_per_unit is not None else None,
-            "total": round(total_dollars, 2) if total_dollars is not None else None
-        })
+    # Sort by date (newest first)
+    rows.sort(key=lambda x: (x["date"] or ""), reverse=True)
 
-        # Sort by date (newest first)
-        rows.sort(key = lambda x: (x["date"] or ""), reverse = True)
-
-        return rows
+    return rows
 
 # def _parse_capacity_to_value(capacity_str: Optional[str]) -> Optional[float]:
 #     if not isinstance(capacity_str, str):

@@ -11,76 +11,108 @@ import {
   Box,
   Snackbar,
   Alert,
+  CircularProgress,
 } from "@mui/material";
 import { Add, TrendingUp } from "@mui/icons-material";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
-
-// Mock recommendations - will be replaced with backend data later
-const mockRecommendations = [
-  {
-    symbol: "NVDA",
-    name: "NVIDIA Corporation",
-    currentPrice: 495.5,
-    targetPrice: 600.0,
-    potentialReturn: 21.1,
-    reason: "Strong AI chip demand and market leadership",
-  },
-  {
-    symbol: "MSFT",
-    name: "Microsoft Corporation",
-    currentPrice: 380.0,
-    targetPrice: 450.0,
-    potentialReturn: 18.4,
-    reason: "Cloud growth and AI integration",
-  },
-  {
-    symbol: "GOOGL",
-    name: "Alphabet Inc.",
-    currentPrice: 142.5,
-    targetPrice: 170.0,
-    potentialReturn: 19.3,
-    reason: "Search dominance and AI development",
-  },
-  {
-    symbol: "TSLA",
-    name: "Tesla Inc.",
-    currentPrice: 248.0,
-    targetPrice: 310.0,
-    potentialReturn: 25.0,
-    reason: "EV market leader with production expansion",
-  },
-];
+import { useAuth } from "../../context/AuthContext.jsx";
 
 const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
-  const [toast, setToast] = useState({ open: false, message: "", symbol: "" });
+  const { authFetch } = useAuth();
+  const [toast, setToast] = useState({
+    open: false,
+    message: "",
+    symbol: "",
+    severity: "success",
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [recommendations, setRecommendations] = useState([]);
 
-  // Filter out stocks already in portfolio
-  const recommendations = mockRecommendations.filter(
-    (rec) => !currentPortfolio.some((stock) => stock.symbol === rec.symbol)
-  );
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+    const fetchRecommendations = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await authFetch(
+          "/api/dataset/timeseries/recommendations?limit=6"
+        );
+
+        if (!data?.success) {
+          throw new Error(
+            data?.detail || data?.message || "Failed to load recommendations."
+          );
+        }
+
+        if (!cancelled) {
+          setRecommendations(Array.isArray(data.items) ? data.items : []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to fetch recommendations:", err);
+          setRecommendations([]);
+          setError(err.message || "Unable to fetch recommendations.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchRecommendations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, authFetch]);
+
+  const filteredRecommendations = useMemo(() => {
+    const presentSymbols = new Set(
+      (currentPortfolio || []).map((stock) => stock.symbol?.toUpperCase())
+    );
+    return recommendations.filter(
+      (rec) => rec.symbol && !presentSymbols.has(rec.symbol.toUpperCase())
+    );
+  }, [recommendations, currentPortfolio]);
 
   const handleAddStock = async (stock) => {
+    if (stock.latestPrice == null) {
+      setToast({
+        open: true,
+        message: `${stock.symbol} does not have a latest price in the dataset.`,
+        symbol: stock.symbol,
+        severity: "error",
+      });
+      return;
+    }
+
     try {
       await onAdd({
         symbol: stock.symbol,
         name: stock.name,
         shares: 1,
-        buyPrice: stock.currentPrice,
+        buyPrice: stock.latestPrice,
         buyDate: dayjs().format("YYYY-MM-DD"),
-        currentPrice: stock.currentPrice,
+        currentPrice: stock.latestPrice,
       });
 
       setToast({
         open: true,
-        message: `${stock.symbol} has been added to your portfolio`,
+        message: `${stock.symbol} has been added to your portfolio.`,
         symbol: stock.symbol,
+        severity: "success",
       });
     } catch (error) {
       setToast({
         open: true,
         message: error.message || "Failed to add stock",
         symbol: stock.symbol,
+        severity: "error",
       });
     }
   };
@@ -105,18 +137,26 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
             Recommended Stocks
           </Typography>
           <DialogContentText sx={{ mt: 1 }}>
-            Based on your portfolio, here are our AI-powered recommendations
+            Explore popular dataset securities based on recent FAR transactions.
           </DialogContentText>
         </DialogTitle>
 
         <DialogContent>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 2 }}>
-            {recommendations.length === 0 ? (
+            {loading ? (
+              <Box sx={{ py: 5, display: "flex", justifyContent: "center" }}>
+                <CircularProgress size={28} />
+              </Box>
+            ) : error ? (
+              <Typography color="error" align="center" sx={{ py: 4 }}>
+                {error}
+              </Typography>
+            ) : filteredRecommendations.length === 0 ? (
               <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
                 All recommended stocks are already in your portfolio!
               </Typography>
             ) : (
-              recommendations.map((stock) => (
+              filteredRecommendations.map((stock) => (
                 <Card
                   key={stock.symbol}
                   variant="outlined"
@@ -162,15 +202,19 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
                               Current Price
                             </Typography>
                             <Typography variant="body1" fontWeight="600">
-                              ${stock.currentPrice.toFixed(2)}
+                              {stock.latestPrice != null
+                                ? `$${stock.latestPrice.toFixed(2)}`
+                                : "N/A"}
                             </Typography>
                           </Grid>
                           <Grid item xs={6}>
                             <Typography variant="body2" color="text.secondary">
-                              Target Price
+                              Total Value Traded
                             </Typography>
                             <Typography variant="body1" fontWeight="600">
-                              ${stock.targetPrice.toFixed(2)}
+                              {stock.totalValue != null
+                                ? `$${stock.totalValue.toLocaleString()}`
+                                : "N/A"}
                             </Typography>
                           </Grid>
                         </Grid>
@@ -191,13 +235,15 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
                             fontWeight="500"
                             sx={{ color: "success.main" }}
                           >
-                            +{stock.potentialReturn.toFixed(1)}% potential
-                            return
+                            Units traded:{" "}
+                            {stock.totalUnits != null
+                              ? stock.totalUnits.toLocaleString()
+                              : "N/A"}
                           </Typography>
                         </Box>
 
                         <Typography variant="body2" color="text.secondary">
-                          {stock.reason}
+                          Dataset security (ISIN: {stock.isin})
                         </Typography>
                       </Box>
 
@@ -227,10 +273,10 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
       >
         <Alert
           onClose={handleCloseToast}
-          severity="success"
+          severity={toast.severity || "success"}
           sx={{ width: "100%" }}
         >
-          <strong>Stock Added:</strong> {toast.message}
+          {toast.message}
         </Alert>
       </Snackbar>
     </>

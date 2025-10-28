@@ -10,6 +10,7 @@ import {
   Paper,
   IconButton,
   Typography,
+  Tooltip,
 } from "@mui/material";
 import {
   calculateStockStats,
@@ -23,10 +24,9 @@ const NEGATIVE_COLOR = "#dc2626";
 
 const TABLE_HEADERS = [
   { label: "Symbol", align: "left" },
-  { label: "Name", align: "left" },
   { label: "Shares", align: "right" },
-  { label: "Buy Price", align: "right" },
-  { label: "Buy Date", align: "right" },
+  { label: "Last Seen Price", align: "right" },
+  { label: "Last Seen Date", align: "right" },
   { label: "Current Price", align: "right" },
   { label: "Total Value", align: "right" },
   { label: "P&L", align: "right" },
@@ -65,14 +65,23 @@ const StockRow = ({ stock, onRemove }) => {
   const { totalValue, pl, returnPercent, isPositive } =
     calculateStockStats(stock);
   const plColor = isPositive ? POSITIVE_COLOR : NEGATIVE_COLOR;
+  const canRemove = !stock.isSynthetic;
+  const lastSeenPrice =
+    stock.lastSeenPrice !== undefined && stock.lastSeenPrice !== null
+      ? stock.lastSeenPrice
+      : stock.buyPrice;
+  const lastSeenDate = stock.lastSeenDate || stock.buyDate;
 
   return (
     <TableRow sx={styles.tableRow}>
-      <TableCell sx={styles.symbolCell}>{stock.symbol}</TableCell>
-      <TableCell>{stock.name}</TableCell>
+      <TableCell sx={styles.symbolCell}>
+        <Tooltip title={stock.name || stock.symbol} arrow disableInteractive>
+          <span>{stock.symbol}</span>
+        </Tooltip>
+      </TableCell>
       <TableCell align="right">{stock.shares}</TableCell>
-      <TableCell align="right">{formatCurrency(stock.buyPrice)}</TableCell>
-      <TableCell align="right">{formatDate(stock.buyDate)}</TableCell>
+      <TableCell align="right">{formatCurrency(lastSeenPrice)}</TableCell>
+      <TableCell align="right">{formatDate(lastSeenDate)}</TableCell>
       <TableCell align="right">{formatCurrency(stock.currentPrice)}</TableCell>
       <TableCell align="right">{formatCurrency(totalValue)}</TableCell>
       <TableCell align="right" sx={{ ...styles.plCell, color: plColor }}>
@@ -83,16 +92,24 @@ const StockRow = ({ stock, onRemove }) => {
         {formatPercentage(returnPercent, isPositive)}
       </TableCell>
       <TableCell align="right">
-        <IconButton onClick={() => onRemove(stock.id)} sx={styles.deleteButton}>
-          <Trash2 size={18} />
-        </IconButton>
+        {canRemove ? (
+          <IconButton onClick={() => onRemove(stock.id)} sx={styles.deleteButton}>
+            <Trash2 size={18} />
+          </IconButton>
+        ) : (
+          <Typography sx={styles.syntheticBadge}>Auto</Typography>
+        )}
       </TableCell>
     </TableRow>
   );
 };
 
 const PortfolioTable = ({ portfolio, onRemove, onAddStock }) => {
-  if (portfolio.length === 0) {
+  const filteredPortfolio = portfolio.filter(
+    (stock) => Number(stock.shares) > 0
+  );
+
+  if (filteredPortfolio.length === 0) {
     return <EmptyPortfolio onAddStock={onAddStock} />;
   }
 
@@ -101,7 +118,7 @@ const PortfolioTable = ({ portfolio, onRemove, onAddStock }) => {
       <Table>
         <TableHeader />
         <TableBody>
-          {portfolio.map((stock) => (
+          {filteredPortfolio.map((stock) => (
             <StockRow key={stock.id} stock={stock} onRemove={onRemove} />
           ))}
         </TableBody>
@@ -150,5 +167,10 @@ const styles = {
   deleteButton: {
     color: NEGATIVE_COLOR,
     "&:hover": { bgcolor: "#fee2e2" },
+  },
+  syntheticBadge: {
+    color: "#6b7280",
+    fontSize: "12px",
+    fontWeight: 600,
   },
 };

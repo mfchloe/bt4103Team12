@@ -26,7 +26,7 @@ import dayjs from "dayjs";
 import { db } from "../../firebase.jsx";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 
-const STOCK_PRICE_API_URL = `${apiBaseUrl}/api/yfinance/batch`;
+const STOCK_PRICE_API_URL = `${apiBaseUrl}/api/dataset/timeseries/batch`;
 
 const Home = () => {
   const [portfolio, setPortfolio] = useState([]);
@@ -58,6 +58,16 @@ const Home = () => {
       currentPrice: item.current_price,
       createdAt: item.created_at,
       updatedAt: item.updated_at,
+      totalBuyValue: item.total_buy_value,
+      totalSellValue: item.total_sell_value,
+      realizedPl: item.realized_pl,
+      remainingCost: item.remaining_cost,
+      isSynthetic: Boolean(item.synthetic),
+      lastSeenPrice:
+        item.last_seen_price !== undefined && item.last_seen_price !== null
+          ? item.last_seen_price
+          : item.buy_price,
+      lastSeenDate: item.last_seen_date || item.buy_date,
     }),
     []
   );
@@ -102,7 +112,9 @@ const Home = () => {
 
     const refreshPrices = async () => {
       try {
-        const symbols = portfolioRef.current.map((stock) => stock.symbol);
+        const symbols = portfolioRef.current
+          .map((stock) => stock.symbol && stock.symbol.toUpperCase())
+          .filter(Boolean);
         if (!symbols.length) return;
 
         const response = await fetch(STOCK_PRICE_API_URL, {
@@ -118,7 +130,7 @@ const Home = () => {
         setPortfolio((prevPortfolio) =>
           prevPortfolio.map((stock) => {
             const updatedPrice = data.prices[stock.symbol];
-            if (updatedPrice === undefined) {
+            if (updatedPrice === undefined || updatedPrice === null) {
               return stock;
             }
             pendingUpdates.push({ id: stock.id, current_price: updatedPrice });

@@ -23,9 +23,7 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
 import FormTextField from "../FormTextField";
-import { apiBaseUrl } from "../../api/httpClient.js";
-
-const API_BASE_URL = `${apiBaseUrl}/api/yfinance`;
+import { useAuth } from "../../context/AuthContext.jsx";
 
 const INITIAL_FORM_STATE = {
   symbol: "",
@@ -56,7 +54,11 @@ const StockAutocomplete = ({
       onChange={onStockSelect}
       onInputChange={(event, newInputValue) => onSearch(newInputValue)}
       options={stockOptions}
-      getOptionLabel={(option) => `${option.symbol} - ${option.name}`}
+      getOptionLabel={(option) =>
+        option?.symbol && option?.name
+          ? `${option.symbol} - ${option.name}`
+          : option?.symbol || option?.name || ""
+      }
       loading={searchLoading}
       disabled={loading}
       sx={styles.autocomplete}
@@ -85,6 +87,8 @@ const StockAutocomplete = ({
 );
 
 const AddStockDialog = ({ open, onClose, onAdd }) => {
+  const { authFetch } = useAuth();
+
   const [toast, setToast] = useState(INITIAL_TOAST_STATE);
   const [formData, setFormData] = useState(INITIAL_FORM_STATE);
   const [loading, setLoading] = useState(false);
@@ -94,7 +98,7 @@ const AddStockDialog = ({ open, onClose, onAdd }) => {
   const [purchaseMode, setPurchaseMode] = useState("price");
   const [buyDateValue, setBuyDateValue] = useState(null);
 
-  const showToast = (message, severity = "success") => {
+const showToast = (message, severity = "success") => {
     setToast({ open: true, message, severity });
   };
 
@@ -106,13 +110,15 @@ const AddStockDialog = ({ open, onClose, onAdd }) => {
 
     setSearchLoading(true);
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/search?q=${encodeURIComponent(query)}&limit=10`
+      const data = await authFetch(
+        `/api/dataset/timeseries/search?q=${encodeURIComponent(
+          query
+        )}&limit=10`
       );
-      const data = await response.json();
-
-      if (data.success) {
+      if (data?.results) {
         setStockOptions(data.results);
+      } else {
+        setStockOptions([]);
       }
     } catch (error) {
       console.error("Error searching stocks:", error);
@@ -123,30 +129,40 @@ const AddStockDialog = ({ open, onClose, onAdd }) => {
   };
 
   const fetchStockPrice = async (symbol) => {
-    const response = await fetch(`${API_BASE_URL}/${symbol}`);
-    const data = await response.json();
-
-    if (data.success) {
-      return {
-        currentPrice: data.currentPrice,
-        name: data.name,
-      };
+    try {
+      const data = await authFetch(
+        `/api/dataset/timeseries/${encodeURIComponent(symbol)}`
+      );
+      if (data?.success) {
+        return {
+          currentPrice: data.currentPrice,
+          name: data.name,
+        };
+      }
+      throw new Error(
+        data?.detail || data?.error || "Failed to fetch stock data"
+      );
+    } catch (error) {
+      throw error;
     }
-    throw new Error(data.error || "Failed to fetch stock data");
   };
 
   const fetchHistoricalPrice = async (symbol, date) => {
-    const response = await fetch(
-      `${API_BASE_URL}/${symbol}/historical-price?date=${encodeURIComponent(
-        date
-      )}`
-    );
-    const data = await response.json();
-
-    if (data.success) {
-      return data;
+    try {
+      const data = await authFetch(
+        `/api/dataset/timeseries/${encodeURIComponent(
+          symbol
+        )}/historical-price?date=${encodeURIComponent(date)}`
+      );
+      if (data?.success) {
+        return data;
+      }
+      throw new Error(
+        data?.detail || data?.error || "Failed to fetch historical price"
+      );
+    } catch (error) {
+      throw error;
     }
-    throw new Error(data.error || "Failed to fetch historical price");
   };
 
   const handleStockSelect = (_, value) => {

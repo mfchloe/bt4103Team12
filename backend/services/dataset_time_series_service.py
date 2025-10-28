@@ -126,12 +126,12 @@ class DatasetTimeSeriesService:
         return self._asset_lookup.get(isin, {})
 
     def _has_full_coverage(self, isin: str) -> bool:
-        """Return True when an ISIN has data through the dataset's latest date."""
+        """Return True when an ISIN has at least one close price entry."""
         if not isin:
             return False
         self._ensure_close_prices()
         last_date = self._isin_last_date.get(isin.strip())
-        return bool(last_date and last_date >= self._latest_available_date)
+        return bool(last_date)
 
     # ---------- public API ----------
     def search_assets(self, query: str, limit: int = 10) -> List[Dict[str, str]]:
@@ -291,3 +291,133 @@ class DatasetTimeSeriesService:
             )
 
         return series
+
+    def get_symbol_info(self, symbol: str) -> Optional[Dict[str, str]]:
+        """Return canonical information for a dataset symbol."""
+        if not symbol:
+            return None
+
+        self._ensure_asset_catalog()
+        self._ensure_close_prices()
+        self._ensure_symbol_lookup()
+
+        lookup_key = symbol.strip().upper()
+        if not lookup_key:
+            return None
+
+        info = self._symbol_lookup.get(lookup_key)
+        if not info:
+            # Allow fallback when caller passes an ISIN instead of a short name.
+            asset_info = self._get_asset_info(lookup_key)
+            if asset_info:
+                self._symbol_lookup[lookup_key] = {
+                    "symbol": asset_info.get("assetShortName") or lookup_key,
+                    "name": asset_info.get("assetName") or lookup_key,
+                    "isin": lookup_key,
+                    "marketId": asset_info.get("marketID", ""),
+                    "assetCategory": asset_info.get("assetCategory", ""),
+                    "assetSubCategory": asset_info.get("assetSubCategory", ""),
+                }
+                info = self._symbol_lookup[lookup_key]
+        return info
+
+    def get_asset_info_by_isin(self, isin: str) -> Optional[Dict[str, str]]:
+        if not isin:
+            return None
+
+        self._ensure_asset_catalog()
+        asset = self._get_asset_info(isin.strip())
+        if not asset:
+            return None
+
+        symbol = asset.get("assetShortName") or asset.get("assetName") or isin
+        return {
+            "symbol": symbol,
+            "name": asset.get("assetName") or symbol,
+            "isin": isin.strip(),
+            "marketId": asset.get("marketID", ""),
+            "assetCategory": asset.get("assetCategory", ""),
+            "assetSubCategory": asset.get("assetSubCategory", ""),
+        }
+
+    def _latest_price_for_isin(self, isin: str) -> Optional[float]:
+        if not isin:
+            return None
+
+        self._ensure_close_prices()
+        if self._close_prices_df is None:
+            return None
+
+        normalized = isin.strip()
+        last_date = self._isin_last_date.get(normalized)
+        if not last_date:
+            return None
+
+        df = self._close_prices_df
+        rows = df.loc[(df["ISIN"] == normalized) & (df["timestamp"].dt.date == last_date)]
+        if rows.empty:
+            return None
+
+        price = rows.iloc[-1]["closePrice"]
+        return float(price) if pd.notna(price) else None
+
+    def get_latest_price_for_symbol(self, symbol: str) -> Optional[float]:
+        info = self.get_symbol_info(symbol)
+        if not info:
+            return None
+        return self._latest_price_for_isin(info.get("isin", ""))
+
+    def get_latest_prices_for_symbols(self, symbols: List[str]) -> Dict[str, Optional[float]]:
+        prices: Dict[str, Optional[float]] = {}
+        if not symbols:
+            return prices
+
+        for symbol in symbols:
+            if not symbol:
+                continue
+            lookup_key = symbol.strip().upper()
+            prices[lookup_key] = self.get_latest_price_for_symbol(lookup_key)
+        return prices
+
+    def get_price_for_symbol_on_date(self, symbol: str, target_date: date) -> Optional[Dict[str, Any]]:
+        if not symbol or not target_date:
+            return None
+
+        self._ensure_close_prices()
+        self._ensure_symbol_lookup()
+
+        info = self.get_symbol_info(symbol)
+        if not info:
+            return None
+
+        isin = info.get("isin")
+        if not isin or self._close_prices_df is None:
+            return None
+
+        df = self._close_prices_df
+        rows = df.loc[
+            (df["ISIN"] == isin)
+            & (df["timestamp"].dt.date == pd.Timestamp(target_date).date())
+        ]
+
+        if rows.empty:
+            # Fall back to the latest price before the target date.
+            history = df.loc[(df["ISIN"] == isin) & (df["timestamp"].dt.date <= target_date)]
+            if history.empty:
+                return None
+            row = history.iloc[-1]
+        else:
+            row = rows.iloc[-1]
+
+        price = row.get("closePrice")
+        ts = row.get("timestamp")
+        if pd.isna(price) or pd.isna(ts):
+            return None
+
+        return {
+            "symbol": info.get("symbol", symbol),
+            "name": info.get("name"),
+            "isin": isin,
+            "price": float(price),
+            "price_date": ts.date(),
+        }
