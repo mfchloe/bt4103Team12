@@ -15,7 +15,7 @@ import {
   Alert,
 } from "@mui/material";
 
-/* ========= [CHANGE #1: label/value pairs] ========= */
+/* change to label/value pairs for readability */
 const INVESTOR_TYPES = [
   { value: "active_trader",   label: "Active Trader" },
   { value: "moderate_trader", label: "Moderate Trader" },
@@ -110,7 +110,7 @@ export default function UserProfileDialog({ open, onClose, onSave, initial }) {
         <Box sx={{ display: "grid", gap: 2 }}>
           <FormControl fullWidth>
             <InputLabel id="investorType-label">Investor Type</InputLabel>
-            {/* ========= [CHANGE #2: render label but keep value] ========= */}
+            {/* render label but keep value */}
             <Select
               labelId="investorType-label"
               label="Investor Type"
@@ -159,7 +159,7 @@ export default function UserProfileDialog({ open, onClose, onSave, initial }) {
 
           <Box>
             <Typography gutterBottom>
-              Diversification Score: {divScore.toFixed(2)}
+              How much you want to diversify your portfolio: {divScore.toFixed(2)}
             </Typography>
             <Slider
               value={divScore}
