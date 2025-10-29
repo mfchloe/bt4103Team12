@@ -8,6 +8,8 @@ import {
   Legend,
 } from "recharts";
 
+import { CHART_COLORS } from "../../constants/colors";
+
 interface DonutChartProps {
   title: string;
   data: Array<{ label: string; value: number }>;
@@ -16,24 +18,50 @@ interface DonutChartProps {
   outerRadius?: number;
   height?: number;
   onSelect?: (label: string) => void;
-  selected?: string[]; // <- add this
+  selected?: string[];
 }
 
 export const DonutChart = ({
   title,
   data,
-  colors = ["#1976d2", "#42a5f5", "#90caf9", "#0d47a1", "#ff9800", "#f44336"],
+  colors = CHART_COLORS,
   innerRadius = 60,
   outerRadius = 90,
   height = 280,
   onSelect,
-  selected = [], // <- default empty
+  selected = [],
 }: DonutChartProps) => {
+  const total = (data || []).reduce((acc, d) => acc + d.value, 0);
   const chartData = (data || []).map((d, idx) => ({
     name: d.label,
     value: d.value,
     fill: colors[idx % colors.length],
   }));
+
+  // --- Custom tooltip with percentage ---
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const { name, value } = payload[0];
+      const percent = ((value / total) * 100).toFixed(1);
+      return (
+        <Box
+          sx={{
+            backgroundColor: "white",
+            p: 1,
+            border: "1px solid #ccc",
+            borderRadius: 1,
+          }}
+        >
+          <Typography variant="body2" fontWeight={600}>
+            {name}
+          </Typography>
+          <Typography variant="body2">Value: {value}</Typography>
+          <Typography variant="body2">Percent: {percent}%</Typography>
+        </Box>
+      );
+    }
+    return null;
+  };
 
   return (
     <Card sx={{ transition: "all 0.3s", "&:hover": { boxShadow: 3 } }}>
@@ -54,7 +82,7 @@ export const DonutChart = ({
                 outerRadius={outerRadius}
                 paddingAngle={2}
                 onClick={(d) => onSelect?.(d?.name)}
-                style={{ cursor: onSelect ? "pointer" : "default", outline: "none" }}
+                style={{ cursor: onSelect ? "pointer" : "default" }}
               >
                 {chartData.map((entry, index) => {
                   const isSelected = selected.includes(entry.name);
@@ -62,15 +90,30 @@ export const DonutChart = ({
                     <Cell
                       key={`cell-${index}`}
                       fill={entry.fill}
-                      stroke={isSelected ? "#000" : "none"} // highlight
+                      stroke={isSelected ? "#000" : "none"}
                       strokeWidth={isSelected ? 3 : 0}
-                      opacity={selected.length > 0 && !isSelected ? 0.4 : 1} // dim others
+                      opacity={selected.length > 0 && !isSelected ? 0.4 : 1}
                     />
                   );
                 })}
               </Pie>
-              <Tooltip />
-              <Legend verticalAlign="bottom" height={36} iconType="circle" />
+              <Tooltip content={<CustomTooltip />} />
+              <Legend
+                verticalAlign="bottom"
+                layout="vertical"
+                align="center"
+                iconType="circle"
+                wrapperStyle={{
+                  fontSize: 12,
+                  lineHeight: "16px",
+                  marginTop: 12,
+                  maxHeight: 80,
+                  overflowY: "auto",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "normal",
+                  wordBreak: "break-word",
+                }}
+              />
             </PieChart>
           </ResponsiveContainer>
         </Box>
@@ -78,4 +121,3 @@ export const DonutChart = ({
     </Card>
   );
 };
-

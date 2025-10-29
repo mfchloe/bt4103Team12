@@ -1,13 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Container,
-  Box,
-  Typography,
-  Tabs,
-  Tab,
-  Paper,
-  Stack,
-} from "@mui/material";
+import { Container, Box, Typography, Tabs, Tab, Paper } from "@mui/material";
 import PeopleIcon from "@mui/icons-material/People";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import ShowChartIcon from "@mui/icons-material/ShowChart";
@@ -15,13 +7,10 @@ import PieChartIcon from "@mui/icons-material/PieChart";
 
 import StatCard from "../components/StatCard";
 import { FilterChartsPanel } from "../components/FARDashboard/FilterChartsPanel";
-import { DonutChart } from "../components/FARDashboard/DonutChart";
-import { HistogramCard } from "../components/FARDashboard/HistogramCard";
-import { CategoryBarCard } from "../components/FARDashboard/CategoryBarCard";
-import { TopAssetsTable } from "../components/FARDashboard/TopAssetsTable";
-import { ActivityLineChart } from "../components/FARDashboard/ActivityLineChart";
-import { ScatterChartCard } from "../components/FARDashboard/ScatterChartCard";
 import { useApi } from "../hooks/useApi";
+
+import TradingBehaviorTab from "../components/FARDashboard/tabs/TradingBehaviorTab";
+import AssetIndustryTab from "../components/FARDashboard/tabs/AssetIndustryTab";
 
 const createDefaultFilters = () => ({
   customer_type: [],
@@ -123,7 +112,6 @@ export default function FARDashboard() {
     ...body,
     column: "preferred_subcategory",
   });
-
   const { data: portfolioDiversification } = useApi("/api/far/histogram", {
     ...body,
     column: "current_diversification_score",
@@ -134,7 +122,6 @@ export default function FARDashboard() {
     limit: 500,
   });
 
-  console.log(investmentVsTransactions);
   const investorTypeData = useMemo(
     () => investorBreakdown?.rows || [],
     [investorBreakdown]
@@ -215,78 +202,66 @@ export default function FARDashboard() {
 
           {/* Main Dashboard Content */}
           <Box sx={{ flex: 1 }}>
-            {/* Section Tabs */}
-            <Paper>
-              <Tabs
-                value={activeTab}
-                onChange={(_, val) => setActiveTab(val)}
-                variant="scrollable"
-                scrollButtons="auto"
+            <Box
+              sx={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
+              <Paper
+                elevation={0}
+                sx={{
+                  borderRadius: 3,
+                  px: 1,
+                  py: 0.5,
+                  display: "flex",
+                  alignItems: "center",
+                }}
               >
-                <Tab label="Investor Profile" />
-                <Tab label="Trading Behavior" />
-                <Tab label="Asset & Industry" />
-              </Tabs>
-            </Paper>
+                <Tabs
+                  value={activeTab}
+                  onChange={(_, val) => setActiveTab(val)}
+                  variant="scrollable"
+                  scrollButtons="auto"
+                  TabIndicatorProps={{
+                    style: { display: "none" },
+                  }}
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    minHeight: "unset",
+                  }}
+                >
+                  {["Trading Behavior", "Asset & Industry"].map((label, i) => (
+                    <Tab
+                      key={label}
+                      label={label}
+                      sx={styles.tabStyle(activeTab, i)}
+                    />
+                  ))}
+                </Tabs>
+              </Paper>
+            </Box>
 
-            {/* Tab Content */}
             <Box sx={{ mt: 3 }}>
               {activeTab === 0 && (
-                <Stack spacing={3}>
-                  <DonutChart
-                    title="Investor Type Breakdown"
-                    data={investorTypeData}
-                  />
-                  <DonutChart
-                    title="Asset Subcategory Breakdown"
-                    data={assetSubcategories?.rows || []}
-                    height={280}
-                  />
-                  <HistogramCard
-                    title="Portfolio Diversification"
-                    bins={portfolioDiversification?.bins || []}
-                  />
-                </Stack>
+                <TradingBehaviorTab
+                  investorTypeData={investorTypeData}
+                  activityHist={activityHist}
+                  activitySeries={activitySeries}
+                  investmentVsTransactions={investmentVsTransactions}
+                  portfolioDiversification={portfolioDiversification}
+                />
               )}
               {activeTab === 1 && (
-                <>
-                  <HistogramCard
-                    title="Trading Activity Distribution"
-                    bins={activityHist?.bins || []}
-                  />
-                  <Box sx={{ mt: 3 }}>
-                    <ActivityLineChart
-                      title="Customer Activity over Time"
-                      rows={activitySeries?.rows}
-                    />
-                  </Box>
-                  <Box sx={{ mt: 3 }}>
-                    <ScatterChartCard
-                      title="Investment vs Avg Transactions"
-                      data={investmentVsTransactions?.rows || []}
-                    />
-                  </Box>
-                </>
-              )}
-              {activeTab === 2 && (
-                <>
-                  <DonutChart
-                    title="Asset Category Breakdown"
-                    data={assetCategoryData?.rows || []}
-                  />
-                  <Box sx={{ mt: 3 }}>
-                    <CategoryBarCard
-                      title="Industry Preference"
-                      rows={industryPrefs?.rows}
-                    />
-                  </Box>
-                  <Box sx={{ mt: 3 }}>
-                    <TopAssetsTable
-                      rows={topAssets?.rows || []}
-                      onSelectAsset={setSelectedAsset}
-                    />
-                  </Box>
-                </>
+                <AssetIndustryTab
+                  assetSubcategories={assetSubcategories}
+                  assetCategoryData={assetCategoryData}
+                  industryPrefs={industryPrefs}
+                  topAssets={topAssets}
+                  setSelectedAsset={setSelectedAsset}
+                />
               )}
             </Box>
           </Box>
@@ -295,3 +270,28 @@ export default function FARDashboard() {
     </Box>
   );
 }
+
+const styles = {
+  tabStyle: (activeTab, i) => ({
+    textTransform: "none",
+    fontWeight: 600,
+    borderRadius: "999px",
+    mx: 0.5,
+    px: 2.5,
+    py: 0.9,
+    minHeight: "unset",
+    lineHeight: 1.3,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: activeTab === i ? "#fff" : "#305D9E",
+    bgcolor: activeTab === i ? "#305D9E" : "transparent",
+    transition: "all 0.3s ease",
+    "&:hover": {
+      bgcolor: activeTab === i ? "#2B4F8C" : "#E2EFF4",
+    },
+    "&.Mui-selected": {
+      color: "#fff",
+    },
+  }),
+};

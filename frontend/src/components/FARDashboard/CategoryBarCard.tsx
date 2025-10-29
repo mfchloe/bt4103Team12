@@ -26,7 +26,7 @@ export const CategoryBarCard = ({ title, rows, onSelect, selected = [] }: Catego
         title={<Typography variant="h6" fontWeight={600}>{title}</Typography>}
       />
       <CardContent>
-        <Box sx={{ height: 280 }}>
+        <Box sx={{ height: 300 }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 60 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />

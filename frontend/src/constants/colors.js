@@ -1,6 +1,22 @@
 export const CHART_COLORS = [
-  "#5E86B0", "#B05E6C", "#5EB083", "#B09C5E", "#5EAAB0",
-  "#975EB0", "#7FB05E", "#B07B5E", "#5EB0A1", "#B05E90",
-  "#5E6CB0", "#B08B5E", "#5EB074", "#B05E7E", "#8EB05E",
-  "#B05E5E", "#5EB05E", "#B0865E", "#5EB08E", "#B05E9E"
+  "#305D9E", // deep blue
+  "#4FA3FF", // bright azure
+  "#00BFA6", // vibrant teal
+  "#FF6F61", // coral
+  "#F4B400", // rich gold
+  "#7E57C2", // vivid purple
+  "#43A047", // fresh green
+  "#E91E63", // magenta
+  "#29B6F6", // sky blue
+  "#FFA726", // orange
+  "#66BB6A", // lime green
+  "#AB47BC", // purple pink
+  "#26C6DA", // cyan
+  "#EC407A", // pink-red
+  "#FFCA28", // yellow-gold
+  "#9CCC65", // grassy green
+  "#5C6BC0", // soft indigo
+  "#26A69A", // turquoise
+  "#FF7043", // tangerine
+  "#8E24AA", // strong violet
 ];
