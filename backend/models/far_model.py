@@ -4,7 +4,7 @@ from datetime import date
 from typing import List, Optional, Union
 
 from pydantic import BaseModel, Field, NonNegativeInt
-
+from pydantic.types import NonNegativeInt
 
 class NumericRange(BaseModel):
     minimum: Optional[float] = Field(default=None)
@@ -20,11 +20,12 @@ class FARFilters(BaseModel):
     customer_type: Optional[List[str]] = Field(default=None, description="e.g., Mass, Premium")
     investor_type: Optional[List[str]] = Field(default=None, description="e.g., Buy-and-Hold, Moderate, Active")
     risk_level: Optional[List[str]] = Field(default=None)
+    cluster: Optional[List[int]] = Field(default=None, description="Cluster IDs")
     sectors: Optional[List[str]] = Field(default=None)
+    asset_category: Optional[List[str]] = Field(default=None)  # ADD THIS TOO
     investment_capacity: Optional[Union[List[str], NumericRange]] = Field(default=None)
     date_range: Optional[DateRange] = Field(default=None)
     search_query: Optional[str] = Field(default=None)
-
 
 # requests
 class MetricsRequest(BaseModel):
@@ -48,7 +49,9 @@ class ActivitySeriesRequest(BaseModel):
 class ScatterSampleRequest(BaseModel):
     filters: FARFilters
     limit: NonNegativeInt = Field(default=5000)
-
+    x_column: Optional[str] = None
+    y_column: Optional[str] = None
+    color_by: Optional[str] = None
 
 class ExplainRequest(BaseModel):
     filters: FARFilters
@@ -75,6 +78,8 @@ class CategoryBreakdownRequest(BaseModel):
     filters: FARFilters
     column: str = Field(description="Categorical column name to count")
     top_n: NonNegativeInt = Field(default=20)
+    include_clusters: bool = Field(default=False, description="Whether to apply cluster filter")
+
 
 
 class CategoryRow(BaseModel):

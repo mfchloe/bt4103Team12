@@ -1,5 +1,6 @@
 import React from "react";
 import { Card, CardContent, Box, Typography, Chip } from "@mui/material";
+import { DARK_BLUE } from "../constants/colors";
 
 const StatCard = ({ title, value, icon: Icon, trend }) => {
   const trendNumber =
@@ -11,7 +12,7 @@ const StatCard = ({ title, value, icon: Icon, trend }) => {
       <CardContent sx={{ p: 3 }}>
         <Box sx={styles.iconContainer}>
           <Box sx={styles.iconWrapper}>
-            <Icon size={20} color="#305D9E" />
+            <Icon size={20} color={DARK_BLUE} />
           </Box>
         </Box>
 

@@ -45,14 +45,13 @@ def detect_datasets() -> DatasetPaths:
     # Customers
     customers = (
         _detect_file("customer_information_with_engineered_df")
-        or _detect_file("customer_information_with_engineered")
+        or _detect_file("customer_information_engineered_kMeans")
     )
 
     # Transactions
     transactions = (
         _detect_file("transactions_df")
         or _detect_file("transactions")
-        or _detect_file("customer_transactions")
     )
 
     # Assets
@@ -115,6 +114,41 @@ def load_dataframes() -> Dict[str, pd.DataFrame]:
         dfs["close_prices"] = price_df
 
     return dfs
+
+def get_filtered_transactions(filters: dict) -> pd.DataFrame:
+    """
+    Returns transactions filtered by customer filters,
+    with optional customer metadata merged if needed.
+    """
+    dfs = load_dataframes()
+    cust = dfs.get("customers")
+    tx = dfs.get("transactions")
+
+    if cust is None or cust.empty or tx is None or tx.empty:
+        return pd.DataFrame()  # nothing to return
+
+    # 1. Filter customers first
+    cust_f = _apply_filters(cust, filters)
+    if cust_f.empty:
+        return pd.DataFrame()  # no matching customers
+
+    cust_ids = set(cust_f["customerID"])
+
+    # 2. Filter transactions by customer IDs
+    tx_f = tx[tx["customerID"].isin(cust_ids)].copy()
+    if tx_f.empty:
+        return pd.DataFrame()  # no transactions for filtered customers
+
+    # 3. Merge customer metadata only if needed (e.g., cluster)
+    metadata_cols = [col for col in ["cluster", "customerType"] if col in cust_f.columns]
+    if metadata_cols:
+        tx_f = tx_f.merge(
+            cust_f[["customerID"] + metadata_cols],
+            on="customerID",
+            how="left"
+        )
+
+    return tx_f
 
 
 def reset_cache() -> None:
@@ -404,12 +438,22 @@ def _capacity_matches_filter(capacity_str: str, filter_values: list) -> bool:
     return False
 
 
-def _apply_filters(df: pd.DataFrame, filters: dict, dataset_type: str = "customer") -> pd.DataFrame:
+def _apply_filters(df: pd.DataFrame, filters: dict, dataset_type: str = "customer", exclude_cols: list = None) -> pd.DataFrame:
+    """
+    Apply filters to dataframe.
+    
+    Args:
+        df: DataFrame to filter
+        filters: Dictionary of filter values
+        dataset_type: Type of dataset ("customer" or "asset")
+        exclude_cols: List of column filter keys to exclude from filtering
+    """
     if df is None or df.empty:
         return df.copy()
     
     out = df.copy()
-    
+    exclude_cols = exclude_cols or []
+       
     # Map incoming filter keys to dataset columns
     mapping = {}
     if dataset_type == "customer":
@@ -417,53 +461,132 @@ def _apply_filters(df: pd.DataFrame, filters: dict, dataset_type: str = "custome
             "customer_type": ["customerType"],
             "investor_type": ["investor_type"],
             "risk_level": ["riskLevel"],
+            "cluster": ["cluster"],
         }
         sector_col = "preferred_sector"
     elif dataset_type == "asset":
         mapping = {
-            "investor_type": ["investor_type"],  # optional
+            "investor_type": ["investor_type"],
         }
         sector_col = "sector"
     else:
         sector_col = None
     
-    # Categorical filters
+    # Categorical filters (skip excluded columns)
     for key, candidates in mapping.items():
+        if key in exclude_cols:
+            continue
+            
         values = (filters or {}).get(key)
         if values:
             present_col = next((c for c in candidates if c in out.columns), None)
             if present_col:
-                values_l = set(str(v).lower() for v in values)
-                col_l = out[present_col].astype(str).str.lower()
-                out = out[col_l.isin(values_l)]
-    
+                # Special handling for cluster - it's int64 in dataset
+                if key == "cluster":
+                    # Convert filter values to integers
+                    values_int = []
+                    for v in values:
+                        try:
+                            values_int.append(int(float(v)))  # handle both "1" and 1
+                        except (ValueError, TypeError):
+                            print(f"Warning: Could not convert cluster value {v} to int")
+                    
+                    if values_int:
+                        # Direct integer comparison with int64 column
+                        out = out[out[present_col].isin(values_int)]
+                        print(f"_apply_filters - Applied {key} filter with values {values_int}, remaining rows: {len(out)}")
+                else:
+                    # Regular string comparison for other categorical filters
+                    values_l = set(str(v).lower() for v in values)
+                    col_l = out[present_col].astype(str).str.lower()
+                    out = out[col_l.isin(values_l)]
+                    print(f"_apply_filters - Applied {key} filter, remaining rows: {len(out)}")
+   
     # Sector filter
-    sectors = (filters or {}).get("sectors")
-    if sectors and sector_col and sector_col in out.columns:
-        sectors_l = set(str(v).lower() for v in sectors)
-        out = out[out[sector_col].astype(str).str.lower().isin(sectors_l)]
+    if "sectors" not in exclude_cols:
+        sectors = (filters or {}).get("sectors")
+        if sectors and sector_col and sector_col in out.columns:
+            sectors_l = set(str(v).lower() for v in sectors)
+            out = out[out[sector_col].astype(str).str.lower().isin(sectors_l)]
+            print(f"_apply_filters - Applied sectors filter, remaining rows: {len(out)}")
     
     # Investment Capacity filter (categorical)
-    capacity_filters = (filters or {}).get("investment_capacity")
-    if capacity_filters and "investmentCapacity" in out.columns:
-        # Use categorical matching that groups Predicted_ with actual
-        mask = out["investmentCapacity"].apply(
-            lambda x: _capacity_matches_filter(x, capacity_filters)
-        )
-        out = out[mask]
+    if "investment_capacity" not in exclude_cols:
+        capacity_filters = (filters or {}).get("investment_capacity")
+        if capacity_filters and "investmentCapacity" in out.columns:
+            mask = out["investmentCapacity"].apply(
+                lambda x: _capacity_matches_filter(x, capacity_filters)
+            )
+            out = out[mask]
+            print(f"_apply_filters - Applied investment_capacity filter, remaining rows: {len(out)}")
     
     # Date filter
-    date_range = (filters or {}).get("date_range")
-    date_col = next((c for c in ["date", "txn_date", "transaction_date", "timestamp", "lastQuestionnaireDate"] if c in out.columns), None)
-    if date_range and date_col:
-        start = date_range.get("start")
-        end = date_range.get("end")
-        if start:
-            out = out[pd.to_datetime(out[date_col], errors="coerce") >= pd.to_datetime(start)]
-        if end:
-            out = out[pd.to_datetime(out[date_col], errors="coerce") <= pd.to_datetime(end)]
+    if "date_range" not in exclude_cols:
+        date_range = (filters or {}).get("date_range")
+        date_col = next((c for c in ["date", "txn_date", "transaction_date", "timestamp", "lastQuestionnaireDate"] if c in out.columns), None)
+        if date_range and date_col:
+            start = date_range.get("start")
+            end = date_range.get("end")
+            if start:
+                out = out[pd.to_datetime(out[date_col], errors="coerce") >= pd.to_datetime(start)]
+            if end:
+                out = out[pd.to_datetime(out[date_col], errors="coerce") <= pd.to_datetime(end)]
+            print(f"_apply_filters - Applied date_range filter, remaining rows: {len(out)}")
     
+    print(f"_apply_filters - Final rows: {len(out)}")
     return out
+
+
+def get_category_breakdown(filters: dict, column: str, top_n: int = 20, include_clusters: bool = False) -> dict:
+    """
+    Get category breakdown with optional cluster info.
+
+    Args:
+        filters: Filter dict to apply (includes cluster filter if any)
+        column: The categorical column to count
+        top_n: Top N categories
+        include_cluster: If True, returns breakdown per cluster
+
+    Returns:
+        Dict with rows: [{"label": ..., "value": ..., "cluster": ...}, ...]
+    """
+    dfs = load_dataframes()
+    cust = dfs.get("customers")
+    if cust is None or cust.empty or column not in cust.columns:
+        return {"rows": []}
+
+    # Exclude filters for the column itself to avoid circular filtering
+    exclude_cols = []
+    if column in ["customerType", "riskLevel"]:
+        exclude_cols = ["customer_type", "risk_level", "sectors", "investment_capacity", "date_range"]
+
+    cust_f = _apply_filters(cust, filters, exclude_cols=exclude_cols)
+
+    if cust_f.empty:
+        return {"rows": []}
+
+    if include_clusters and "cluster" in cust_f.columns:
+        # Step 1: total per column value
+        total_counts = cust_f.groupby(column).size().reset_index(name="total_count")
+        top_labels = total_counts.sort_values("total_count", ascending=False).head(top_n)[column].tolist()
+
+        # Step 2: filter only top labels
+        filtered = cust_f[cust_f[column].isin(top_labels)]
+
+        # Step 3: group by column + cluster
+        grouped = filtered.groupby([column, "cluster"]).size().reset_index(name="count")
+
+        rows = [
+            {"label": row[column], "value": int(row["count"]), "cluster": int(row["cluster"])}
+            for _, row in grouped.iterrows()
+        ]
+    else:
+        # Normal breakdown without cluster
+        counts = cust_f[column].dropna().astype(str).value_counts().head(top_n)
+        rows = [{"label": k, "value": int(v)} for k, v in counts.items()]
+
+    return {"rows": rows}
+
 
 def get_metrics(filters: dict) -> dict:
     dfs = load_dataframes()
@@ -499,53 +622,37 @@ def get_metrics(filters: dict) -> dict:
         "total_industries_bought": int(total_industries_bought),
     }
 
-
 def get_top_assets(filters: dict, top_n: int = 10) -> dict:
     dfs = load_dataframes()
-    cust = dfs.get("customers")
-    tx = dfs.get("transactions")
     assets = dfs.get("assets")
-    if tx is None or tx.empty or cust is None or cust.empty or assets is None:
+    if assets is None or assets.empty:
         return {"rows": []}
-    
-    cust_f = _apply_filters(cust, filters)
-    if cust_f.empty:
+
+    # Get filtered transactions with customer metadata
+    tx_f = get_filtered_transactions(filters)
+    if tx_f.empty:
         return {"rows": []}
-    
-    cust_id_col = "customerID" 
-    cust_ids = set(cust_f[cust_id_col]) if cust_id_col else set()
-    
-    tx_f = _apply_filters(tx, filters)
-    if cust_id_col and cust_id_col in tx_f.columns and cust_ids:
-        tx_f = tx_f[tx_f[cust_id_col].isin(cust_ids)]
-    
-    # Join with assets to get asset name/category
+
+    # Merge with assets
     if "ISIN" in tx_f.columns and "ISIN" in assets.columns:
-        tx_f = tx_f.merge(assets[["ISIN", "assetName", "assetShortName", "assetCategory"]], on="ISIN", how="left")
+        tx_f = tx_f.merge(
+            assets[["ISIN", "assetName", "assetShortName", "assetCategory"]],
+            on="ISIN",
+            how="left"
+        )
         tx_f["asset"] = tx_f["assetName"].fillna(tx_f["ISIN"])
-    
-    if "asset" not in tx_f.columns:
-        return {"rows": []}
-    
-    # Compute adoption/lift as before
-    cohort_asset_adopters = tx_f.groupby("asset")[cust_id_col].nunique() if cust_id_col in tx_f.columns else tx_f.groupby("asset").size()
-    cohort_size = len(cust_f)
-    
-    pop_asset_adopters = tx.groupby("ISIN")[cust_id_col].nunique() if cust_id_col in tx.columns else tx.groupby("ISIN").size()
-    pop_customers = len(cust) if cust is not None else None
-    
-    df = pd.concat([cohort_asset_adopters.rename("cohort_buyers"), pop_asset_adopters.rename("pop_buyers")], axis=1).fillna(0)
-    
+
+    # Compute adoption/lift as before...
+    cohort_size = tx_f["customerID"].nunique()
+    pop_asset_adopters = tx_f.groupby("asset")["customerID"].nunique()
+    df = pop_asset_adopters.rename("cohort_buyers").reset_index()
     rows = []
-    for asset, rec in df.sort_values(by="cohort_buyers", ascending=False).head(top_n).iterrows():
-        cohort_count = rec.get("cohort_buyers", 0)
-        pop_count = rec.get("pop_buyers", 1)
-        adoption_rate = float(cohort_count) / float(cohort_size) if cohort_size else 0.0
-        lift = (float(cohort_count)/cohort_size)/(pop_count/pop_customers) if pop_customers and pop_count > 0 and cohort_size > 0 else None
+    for _, r in df.sort_values("cohort_buyers", ascending=False).head(top_n).iterrows():
+        adoption_rate = r["cohort_buyers"] / cohort_size if cohort_size else 0.0
         rows.append({
-            "asset": asset,
-            "adoption_rate": float(adoption_rate),
-            "lift": float(lift) if lift is not None else None
+            "asset": r["asset"],
+            "adoption_rate": adoption_rate,
+            "lift": None  # can calculate lift using full population if needed
         })
     return {"rows": rows}
 
@@ -556,6 +663,7 @@ def get_sector_prefs(filters: dict) -> dict:
     cust = dfs.get("customers")
     tx = dfs.get("transactions")
     rows = []
+
 
     # Helper to compute adoption and lift
     def compute_rows(by_sector: pd.Series, pop_by_sector: pd.Series, cohort_size: int, pop_customers: int):
@@ -569,7 +677,7 @@ def get_sector_prefs(filters: dict) -> dict:
 
     # Case 1: Use transactions if available
     if tx is not None and not tx.empty and "sector" in tx.columns:
-        tx_f = _apply_filters(tx, filters)
+        tx_f = get_filtered_transactions(filters)
         if tx_f.empty:
             return {"rows": []}
 
@@ -647,28 +755,32 @@ def get_activity_series(filters: dict, interval: str = "month") -> dict:
     ]
     return {"rows": rows}
 
-
-def get_scatter_sample(filters: dict, limit: int = 5000) -> dict:
+def get_scatter_sample(filters: dict, limit: int = 5000, x_column: str = None, y_column: str = None) -> dict:
     dfs = load_dataframes()
     cust = dfs.get("customers")
     if cust is None or cust.empty:
         return {"rows": []}
+
     cust_f = _apply_filters(cust, filters)
     if cust_f.empty:
         return {"rows": []}
-    # choose columns if present
-    cols = [c for c in ["days_since_last_buy", "avg_transactions_per_month", "investor_type", "current_net_cash_flow"] if c in cust_f.columns]
+
+    # Use requested x and y columns if present
+    cols = [col for col in [x_column, y_column, "investor_type"] if col in cust_f.columns]
     sample = cust_f[cols].dropna()
+
     rows = []
     for _, r in sample.iterrows():
-        rows.append({
-            "days_since_last_buy": r.get("days_since_last_buy"),
-            "avg_transactions_per_month": r.get("avg_transactions_per_month"),
+        row = {
             "investor_type": r.get("investor_type"),
-            "portfolio_value": r.get("current_net_cash_flow"),  # use actual column
-        })
+        }
+        if x_column in r:
+            row[x_column] = r.get(x_column)
+        if y_column in r:
+            row[y_column] = r.get(y_column)
+        rows.append(row)
 
-    return {"rows": rows}
+    return {"rows": rows[:limit]}
 
 
 def explain_asset(filters: dict, isin: str) -> dict:
@@ -695,7 +807,7 @@ def explain_asset(filters: dict, isin: str) -> dict:
     cohort_size = len(cust_f) if cust_f is not None else 0
 
     # Filter transactions for this ISIN
-    tx_f = _apply_filters(tx, filters)
+    tx_f = get_filtered_transactions(filters)
     tx_isin = tx_f[tx_f.get("ISIN") == isin]
 
     # Join asset info
@@ -752,24 +864,24 @@ def get_histogram(filters: dict, column: str, bins: int = 20) -> dict:
     return {"bins": bins_out}
 
 
-def get_category_breakdown(filters: dict, column: str, top_n: int = 20) -> dict:
-    dfs = load_dataframes()
-    cust = dfs.get("customers")
-    if cust is None or cust.empty or column not in cust.columns:
-        return {"rows": []}
+# def get_category_breakdown(filters: dict, column: str, top_n: int = 20) -> dict:
+#     dfs = load_dataframes()
+#     cust = dfs.get("customers")
+#     if cust is None or cust.empty or column not in cust.columns:
+#         return {"rows": []}
 
-    # apply filters first
-    cust_f = _apply_filters(cust, filters)
+#     # apply filters first
+#     cust_f = _apply_filters(cust, filters)
 
-    # fallback: if sectors filter exists but we dropped everything, include all rows for category breakdown
-    if cust_f.empty and 'sectors' in (filters or {}):
-        cust_f = cust.copy()
+#     # fallback: if sectors filter exists but we dropped everything, include all rows for category breakdown
+#     if cust_f.empty and 'sectors' in (filters or {}):
+#         cust_f = cust.copy()
 
-    counts = (
-        cust_f[column].dropna().astype(str).value_counts().head(top_n)
-    )
-    rows = [{"label": k, "value": int(v)} for k, v in counts.items()]
-    return {"rows": rows}
+#     counts = (
+#         cust_f[column].dropna().astype(str).value_counts().head(top_n)
+#     )
+#     rows = [{"label": k, "value": int(v)} for k, v in counts.items()]
+#     return {"rows": rows}
 
 
 

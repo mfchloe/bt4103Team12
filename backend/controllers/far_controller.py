@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+from fastapi.encoders import jsonable_encoder
+
 import math
 import numbers
 
@@ -78,7 +80,7 @@ def activity_series(req: ActivitySeriesRequest):
 
 @router.post("/scatter-sample")
 def scatter_sample(req: ScatterSampleRequest):
-    return _clean(far_service.get_scatter_sample(req.filters.model_dump(exclude_none=True), req.limit))
+    return _clean(far_service.get_scatter_sample(req.filters.model_dump(exclude_none=True), req.limit, req.x_column, req.y_column))
 
 
 @router.post("/explain")
@@ -100,6 +102,19 @@ def investor_type_breakdown(req: MetricsRequest):
     return _clean({"rows": rows})
 
 
+@router.post("/cluster-breakdown")
+def cluster_breakdown(req: MetricsRequest):
+    dfs = far_service.load_dataframes()
+    cust_df = dfs.get("customers")
+    if cust_df is None or cust_df.empty:
+        return {"rows": []}
+    
+    cust_f = far_service._apply_filters(cust_df, req.filters.model_dump(exclude_none=True))
+    
+    cluster_counts = cust_f['cluster'].value_counts().to_dict()  # Convert Series → dict
+    return _clean(cluster_counts)
+
+
 @router.post("/histogram")
 def histogram(req: HistogramRequest):
     return _clean(far_service.get_histogram(req.filters.model_dump(exclude_none=True), req.column, req.bins))
@@ -109,6 +124,6 @@ def histogram(req: HistogramRequest):
 def category_breakdown(req: CategoryBreakdownRequest):
     return _clean(
         far_service.get_category_breakdown(
-            req.filters.model_dump(exclude_none=True), req.column, req.top_n
+            req.filters.model_dump(exclude_none=True), req.column, req.top_n, req.include_clusters
         )
     )

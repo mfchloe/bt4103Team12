@@ -1,5 +1,19 @@
-import { Box, Typography, Paper, Stack, Chip, Slider } from "@mui/material";
+import {
+  Box,
+  Typography,
+  Paper,
+  Stack,
+  Chip,
+  Slider,
+  Divider,
+} from "@mui/material";
 import FilterListIcon from "@mui/icons-material/FilterList";
+import GroupWorkIcon from "@mui/icons-material/GroupWork";
+import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
+import ShieldIcon from "@mui/icons-material/Shield";
+import EuroIcon from "@mui/icons-material/Euro";
+import TuneIcon from "@mui/icons-material/Tune";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import { DonutChart } from "./DonutChart";
 import { CategoryBarCard } from "./CategoryBarCard";
 
@@ -8,9 +22,9 @@ interface FilterChartsPanelProps {
   setFilters: (filters: any) => void;
   resetFilters: () => void;
   data: {
-    customerType?: any[];
+    customerType?: { label: string; value: number }[];
     riskLevels?: any[];
-    investorType?: any[];
+    clusterCounts?: Record<string, number>;
   };
 }
 
@@ -34,6 +48,8 @@ export const FilterChartsPanel = ({
     (val: any) => Array.isArray(val) && val.length > 0
   ).length;
 
+  const hasClusterSelection = filters.cluster?.length > 0;
+
   return (
     <Paper
       elevation={0}
@@ -43,81 +59,149 @@ export const FilterChartsPanel = ({
         borderColor: "divider",
         overflow: "hidden",
         width: "100%",
-        height: "auto",
+        p: 3,
       }}
     >
       {/* Header */}
-      <Box
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={2}
         sx={{
-          p: 2.5,
-          bgcolor: "primary.main",
-          color: "white",
+          mb: 3,
+          borderBottom: "1px solid",
+          borderColor: "divider",
+          pb: 1.5,
         }}
       >
-        <Stack direction="row" alignItems="center" spacing={1.5}>
-          <FilterListIcon />
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="h6" fontWeight={600}>
-              Filter Dashboard
+        <FilterListIcon color="primary" />
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="h6" fontWeight={600}>
+            Filter Dashboard
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Click on charts or adjust sliders to refine your view.
+          </Typography>
+        </Box>
+        {activeFiltersCount > 0 && (
+          <Chip
+            label={`${activeFiltersCount} active`}
+            size="small"
+            color="primary"
+            sx={{ fontWeight: 600 }}
+          />
+        )}
+      </Stack>
+
+      {/* CLUSTER FILTER */}
+      {data.clusterCounts && (
+        <Box sx={{ mb: 4 }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+            <GroupWorkIcon fontSize="small" color="action" />
+            <Typography variant="subtitle1" fontWeight={600}>
+              Step 1: Select Clusters
             </Typography>
-            <Typography variant="caption" sx={{ opacity: 0.9 }}>
-              Click charts to filter data
-            </Typography>
-          </Box>
-          {activeFiltersCount > 0 && (
-            <Chip
-              label={`${activeFiltersCount} active`}
-              size="small"
+          </Stack>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Start by selecting one or more clusters. The remaining filters below
+            will update based on your cluster choices.
+          </Typography>
+
+          <DonutChart
+            title=""
+            data={Object.entries(data.clusterCounts).map(([name, value]) => ({
+              label: name,
+              value: Number(value),
+            }))}
+            onSelect={(val) => toggleFilterValue("cluster", val)}
+            selected={filters.cluster}
+          />
+
+          {/* Instructional hint */}
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="center"
+            spacing={1}
+            sx={{ mt: 3, mb: 1, opacity: hasClusterSelection ? 1 : 0.7 }}
+          >
+            <ArrowDownwardIcon
               sx={{
-                bgcolor: "white",
-                color: "primary.main",
-                fontWeight: 600,
+                fontSize: 22,
+                color: hasClusterSelection ? "primary.main" : "text.disabled",
               }}
             />
-          )}
-        </Stack>
-      </Box>
+            <Typography
+              variant="body2"
+              color={hasClusterSelection ? "text.primary" : "text.disabled"}
+              fontWeight={500}
+            >
+              {hasClusterSelection
+                ? "Now refining other filters by selected clusters"
+                : "Other filters below will be refined by cluster selection"}
+            </Typography>
+          </Stack>
 
-      {/* Horizontal Filters */}
-      <Box
-        sx={{
-          display: "flex",
-          gap: 3,
-          flexWrap: "wrap", // Wrap on smaller screens
-          p: 2.5,
-          bgcolor: "primary.main",
-        }}
-      >
-        {/* Customer Type */}
-        <Box sx={{ flex: 1, minWidth: 200 }}>
-          <DonutChart
-            title="Customer Type"
-            data={data.customerType || []}
-            onSelect={(val) => toggleFilterValue("customer_type", val)}
-            selected={filters.customer_type}
-          />
+          <Divider sx={{ mt: 2 }} />
         </Box>
+      )}
+
+      {/* OTHER FILTERS */}
+      <Box>
+        {/* Customer Type */}
+        {data.customerType && (
+          <Box sx={{ mb: 4 }}>
+            <Stack
+              direction="row"
+              alignItems="center"
+              spacing={1}
+              sx={{ mb: 1 }}
+            >
+              <PeopleAltIcon fontSize="small" color="action" />
+              <Typography variant="subtitle1" fontWeight={600}>
+                Filter by Customer Type
+              </Typography>
+            </Stack>
+            <DonutChart
+              title=""
+              data={data.customerType}
+              onSelect={(val) => toggleFilterValue("customer_type", val)}
+              selected={filters.customer_type}
+            />
+          </Box>
+        )}
 
         {/* Risk Level */}
-        <Box sx={{ flex: 1, minWidth: 200 }}>
-          <CategoryBarCard
-            title="Risk Level"
-            rows={data.riskLevels || []}
-            onSelect={(val) => toggleFilterValue("risk_level", val)}
-            selected={filters.risk_level}
-          />
-        </Box>
+        {data.riskLevels && (
+          <Box sx={{ mb: 4 }}>
+            <Stack
+              direction="row"
+              alignItems="center"
+              spacing={1}
+              sx={{ mb: 1 }}
+            >
+              <ShieldIcon fontSize="small" color="action" />
+              <Typography variant="subtitle1" fontWeight={600}>
+                Risk Level
+              </Typography>
+            </Stack>
+            <CategoryBarCard
+              title=""
+              rows={data.riskLevels}
+              onSelect={(val) => toggleFilterValue("risk_level", val)}
+              selected={filters.risk_level}
+            />
+          </Box>
+        )}
 
         {/* Investment Capacity */}
-        <Box sx={{ flex: 1, minWidth: 250 }}>
-          <Typography
-            variant="subtitle2"
-            fontWeight={600}
-            gutterBottom
-            color="white"
-          >
-            Investment Capacity (€)
-          </Typography>
+        <Box>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+            <EuroIcon fontSize="small" color="action" />
+            <Typography variant="subtitle1" fontWeight={600}>
+              Set Investment Capacity (€)
+            </Typography>
+          </Stack>
           <Slider
             value={[
               filters.investmentCapacity?.minimum ?? 0,
@@ -137,23 +221,12 @@ export const FilterChartsPanel = ({
             }
             valueLabelDisplay="auto"
             valueLabelFormat={(value) => `€${value.toLocaleString()}`}
-            sx={{
-              color: "white", // <-- makes the track, thumb, and labels white
-              "& .MuiSlider-thumb": {
-                borderColor: "white",
-              },
-              "& .MuiSlider-valueLabel": {
-                color: "white",
-                bgcolor: "primary.main", // optional, background of label
-              },
-            }}
           />
-
           <Box sx={{ display: "flex", justifyContent: "space-between", mt: 1 }}>
-            <Typography variant="caption" color="white">
+            <Typography variant="caption" color="text.secondary">
               €{(filters.investmentCapacity?.minimum ?? 0).toLocaleString()}
             </Typography>
-            <Typography variant="caption" color="white">
+            <Typography variant="caption" color="text.secondary">
               €
               {(filters.investmentCapacity?.maximum ?? 300000).toLocaleString()}
             </Typography>

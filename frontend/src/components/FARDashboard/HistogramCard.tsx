@@ -32,7 +32,7 @@ export const HistogramCard = ({ title, bins }: HistogramCardProps) => {
     >
       <CardHeader
         title={
-          <Typography variant="h6" fontWeight={600}>
+          <Typography fontSize={16} fontWeight={600}>
             {title}
           </Typography>
         }
