@@ -161,3 +161,24 @@ export const calculateTotalReturn = (portfolio) => {
   const totalPl = calculateTotalPL(portfolio);
   return (totalPl / totalCost) * 100;
 };
+
+// const createBins = (scores, numBins = 30) => {
+//   if (!scores || scores.length === 0) return [];
+
+//   const min = Math.min(...scores);
+//   const max = Math.max(...scores);
+//   const binSize = (max - min) / numBins;
+
+//   const bins = Array.from({ length: numBins }, (_, i) => ({
+//     bin_start: min + i * binSize,
+//     bin_end: min + (i + 1) * binSize,
+//     count: 0,
+//   }));
+
+//   scores.forEach((score) => {
+//     const index = Math.min(Math.floor((score - min) / binSize), numBins - 1);
+//     bins[index].count += 1;
+//   });
+
+//   return bins;
+// };

@@ -66,7 +66,11 @@ export const DonutChart = ({
   return (
     <Card sx={{ transition: "all 0.3s", "&:hover": { boxShadow: 3 } }}>
       <CardHeader
-        title={<Typography variant="h6" fontWeight={600}>{title}</Typography>}
+        title={
+          <Typography fontSize={16} fontWeight={600}>
+            {title}
+          </Typography>
+        }
       />
       <CardContent>
         <Box sx={{ height }}>

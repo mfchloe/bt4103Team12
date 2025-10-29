@@ -20,3 +20,6 @@ export const CHART_COLORS = [
   "#FF7043", // tangerine
   "#8E24AA", // strong violet
 ];
+
+export const DARK_BLUE = '#2B4F8C'
+export const LIGHT_BLUE = '#DBE9EE'

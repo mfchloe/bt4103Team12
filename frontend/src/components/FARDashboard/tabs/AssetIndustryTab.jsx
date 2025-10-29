@@ -2,7 +2,7 @@ import { Box, Stack } from "@mui/material";
 import { DonutChart } from "../DonutChart";
 import { CategoryBarCard } from "../CategoryBarCard";
 import { TopAssetsTable } from "../TopAssetsTable";
-
+import { StackedBarChartCard } from "../StackedBarChartCard";
 export default function AssetIndustryTab({
   assetSubcategories,
   assetCategoryData,
@@ -32,12 +32,15 @@ export default function AssetIndustryTab({
           <CategoryBarCard
             title="Asset Subcategory Breakdown"
             rows={assetSubcategories?.rows || []}
-          
           />
         </Box>
       </Box>
 
       <CategoryBarCard title="Industry Preference" rows={industryPrefs?.rows} />
+      <StackedBarChartCard
+        title="Industry Preference by Cluster"
+        rows={industryPrefs?.rows || []}
+      />
 
       <TopAssetsTable
         rows={topAssets?.rows || []}

@@ -11,17 +11,12 @@ import {
   TableHead,
   TableRow,
   Chip,
-  Box,
   TablePagination,
 } from "@mui/material";
-import TrendingUpIcon from "@mui/icons-material/TrendingUp";
-import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 
 interface Asset {
   asset: string;
   adoption_rate: number;
-  lift?: number;
-  momentum_slope?: number;
 }
 
 interface TopAssetsTableProps {
@@ -46,10 +41,9 @@ export const TopAssetsTable = ({
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
     setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0); // reset to first page
+    setPage(0);
   };
 
-  // slice rows for current page
   const paginatedRows = rows.slice(
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
@@ -59,7 +53,7 @@ export const TopAssetsTable = ({
     <Card>
       <CardHeader
         title={
-          <Typography variant="h6" fontWeight={600}>
+          <Typography fontSize={16} fontWeight={600}>
             Top Assets for Cohort
           </Typography>
         }
@@ -77,16 +71,6 @@ export const TopAssetsTable = ({
                 <TableCell>
                   <Typography variant="subtitle2" fontWeight={600}>
                     Adoption
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  <Typography variant="subtitle2" fontWeight={600}>
-                    Lift
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  <Typography variant="subtitle2" fontWeight={600}>
-                    Momentum
                   </Typography>
                 </TableCell>
               </TableRow>
@@ -113,52 +97,12 @@ export const TopAssetsTable = ({
                       sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
                     />
                   </TableCell>
-                  <TableCell>
-                    {row.lift ? (
-                      <Typography
-                        variant="body2"
-                        sx={{ fontFamily: "monospace" }}
-                      >
-                        {row.lift.toFixed(2)}×
-                      </Typography>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        -
-                      </Typography>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {row.momentum_slope != null ? (
-                      <Box
-                        sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
-                      >
-                        {row.momentum_slope >= 0 ? (
-                          <TrendingUpIcon
-                            sx={{ fontSize: 16, color: "success.main" }}
-                          />
-                        ) : (
-                          <TrendingDownIcon
-                            sx={{ fontSize: 16, color: "error.main" }}
-                          />
-                        )}
-                        <Typography
-                          variant="body2"
-                          sx={{ fontFamily: "monospace" }}
-                        >
-                          {(row.momentum_slope * 100).toFixed(1)}%
-                        </Typography>
-                      </Box>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        -
-                      </Typography>
-                    )}
-                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </TableContainer>
+
         <TablePagination
           component="div"
           count={rows.length}
