@@ -56,6 +56,7 @@ const PortfolioPieChart = ({ data }) => (
         outerRadius={90}
         innerRadius={50}
         dataKey="value"
+        fontSize={10}
       >
         {data.map((entry, index) => (
           <Cell key={index} fill={COLORS[index % COLORS.length]} />
