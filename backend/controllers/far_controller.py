@@ -15,6 +15,7 @@ from models.far_model import (
     ScatterSampleRequest,
     SectorPrefsRequest,
     TopAssetsRequest,
+    EfficientFrontierRequest,
 )
 from services import far_service
 
@@ -125,5 +126,14 @@ def category_breakdown(req: CategoryBreakdownRequest):
     return _clean(
         far_service.get_category_breakdown(
             req.filters.model_dump(exclude_none=True), req.column, req.top_n, req.include_clusters
+        )
+    )
+
+
+@router.post("/efficient-frontier")
+def efficient_frontier(req: EfficientFrontierRequest):
+    return _clean(
+        far_service.get_efficient_frontier(
+            req.filters.model_dump(exclude_none=True)
         )
     )

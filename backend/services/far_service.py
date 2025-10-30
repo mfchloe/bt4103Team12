@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 from dataclasses import dataclass
@@ -294,7 +294,7 @@ def get_customer_transactions(customer_id: str):
 #     if not isinstance(capacity_str, str):
 #         return None
 #     import re
-#     s = capacity_str.replace("€", "").replace(",", "").replace("_", " ").strip().lower()
+#     s = capacity_str.replace("鈧?, "").replace(",", "").replace("_", " ").strip().lower()
 #     try:
 #         # Extract numeric tokens with optional k/m suffix, e.g., 30k, 300k, 1m
 #         tokens = re.findall(r"(\d+)\s*([km]?)", s)
@@ -390,7 +390,7 @@ def _parse_capacity_to_value(capacity_str: Optional[str]) -> Optional[float]:
     if not isinstance(capacity_str, str):
         return None
     import re
-    s = capacity_str.replace("€", "").replace(",", "").replace("_", " ").strip().lower()
+    s = capacity_str.replace("鈧?, "").replace(",", "").replace("_", " ").strip().lower()
     try:
         # Extract numeric tokens with optional k/m suffix, e.g., 30k, 300k, 1m
         tokens = re.findall(r"(\d+)\s*([km]?)", s)
@@ -885,3 +885,85 @@ def get_histogram(filters: dict, column: str, bins: int = 20) -> dict:
 
 
 
+
+def get_efficient_frontier(filters: dict) -> dict:
+    dfs = load_dataframes()
+    price_df = dfs.get("close_prices")
+    assets_df = dfs.get("assets")
+
+    if price_df is None or price_df.empty:
+        return {"points": []}
+
+    tx_filtered = get_filtered_transactions(filters)
+    if tx_filtered.empty or "ISIN" not in tx_filtered.columns:
+        return {"points": []}
+
+    isins = (
+        tx_filtered["ISIN"].dropna().astype(str).str.strip()
+    )
+    isins = isins[isins != ""].unique()
+    if len(isins) == 0:
+        return {"points": []}
+
+    price_subset = price_df[price_df["ISIN"].isin(isins)].copy()
+    if price_subset.empty:
+        return {"points": []}
+
+    price_subset["timestamp"] = pd.to_datetime(price_subset["timestamp"], errors="coerce")
+    price_subset["closePrice"] = pd.to_numeric(price_subset["closePrice"], errors="coerce")
+    price_subset = price_subset.dropna(subset=["timestamp", "closePrice"])
+    if price_subset.empty:
+        return {"points": []}
+
+    pivot = (
+        price_subset.pivot_table(index="timestamp", columns="ISIN", values="closePrice")
+        .sort_index()
+    # Build ISIN -> name and symbol mappings
+    name_map: Dict[str, str] = {}
+    symbol_map: Dict[str, str] = {}
+    if assets_df is not None and not assets_df.empty and "ISIN" in assets_df.columns:
+        subset = assets_df[assets_df["ISIN"].isin(isins)]
+        for _, row in subset.iterrows():
+            isin_key = str(row.get("ISIN") or "").strip()
+            nm = row.get("assetName")
+            if isinstance(nm, str):
+                nm = nm.strip()
+            name_map[isin_key] = nm if nm else None
+            short = row.get("assetShortName")
+            if isinstance(short, str):
+                short = short.strip()
+            symbol_map[isin_key] = short if short else None
+
+    points = []
+    for isin, series in pivot.items():
+        series = series.dropna()
+        if len(series) < 2:
+            continue
+
+        first_price = series.iloc[0]
+        last_price = series.iloc[-1]
+        if not pd.notna(first_price) or not pd.notna(last_price) or first_price <= 0:
+            continue
+
+        num_days = len(series)
+        if num_days <= 1:
+            continue
+
+        avg_daily_return = (last_price - first_price) / (first_price * num_days)
+        daily_returns = series.pct_change(fill_method=None).dropna()
+        volatility = float(daily_returns.std(skipna=True) or 0.0)
+        sharpe = float(avg_daily_return / volatility) if volatility > 0 else 0.0
+
+        points.append(
+            {
+                "isin": isin,
+                "name": name_map.get(isin),
+                "symbol": symbol_map.get(isin),
+                "return_daily": float(avg_daily_return),
+                "volatility": float(volatility),
+                "sharpe": float(sharpe),
+            }
+        )
+
+    points.sort(key=lambda item: item["volatility"])  # left-to-right
+    return {"points": points}

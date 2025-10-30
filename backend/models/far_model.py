@@ -90,6 +90,22 @@ class CategoryRow(BaseModel):
 class CategoryBreakdownResponse(BaseModel):
     rows: List[CategoryRow]
 
+class EfficientFrontierRequest(BaseModel):
+    filters: FARFilters
+
+
+class EfficientFrontierPoint(BaseModel):
+    isin: str
+    name: Optional[str] = None
+    symbol: Optional[str] = None
+    return_daily: float
+    volatility: float
+    sharpe: float
+
+
+class EfficientFrontierResponse(BaseModel):
+    points: List[EfficientFrontierPoint]
+
 
 # responses
 class MetricsResponse(BaseModel):

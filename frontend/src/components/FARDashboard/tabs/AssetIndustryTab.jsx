@@ -3,12 +3,14 @@ import { DonutChart } from "../DonutChart";
 import { CategoryBarCard } from "../CategoryBarCard";
 import { TopAssetsTable } from "../TopAssetsTable";
 import { StackedBarChartCard } from "../StackedBarChartCard";
+import { EfficientFrontierChart } from "../EfficientFrontierChart";
 export default function AssetIndustryTab({
   assetSubcategories,
   assetCategoryData,
   industryPrefs,
   topAssets,
   setSelectedAsset,
+  efficientFrontier,
 }) {
   return (
     <Stack spacing={3}>
@@ -40,6 +42,10 @@ export default function AssetIndustryTab({
       <StackedBarChartCard
         title="Industry Preference by Cluster"
         rows={industryPrefs?.rows || []}
+      />
+      <EfficientFrontierChart
+        title="Efficient Frontier (Daily Metrics)"
+        data={efficientFrontier?.points || []}
       />
 
       <TopAssetsTable

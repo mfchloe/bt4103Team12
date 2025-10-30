@@ -170,6 +170,11 @@ export default function FARDashboard() {
     limit: 500, // sample size
   });
 
+  const { data: efficientFrontier } = useApi(
+    "/api/far/efficient-frontier",
+    body
+  );
+
   console.log(diversificationScatter);
   const combinedInvestmentCapacity = useMemo(() => {
     if (!investmentCapacityData?.rows) return [];
@@ -337,6 +342,7 @@ export default function FARDashboard() {
                   industryPrefs={industryPrefs}
                   topAssets={topAssets}
                   setSelectedAsset={setSelectedAsset}
+                  efficientFrontier={efficientFrontier}
                 />
               )}
             </Box>
