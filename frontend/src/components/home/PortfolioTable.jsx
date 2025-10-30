@@ -121,7 +121,6 @@ const PortfolioTable = ({ portfolio, onRemove, onAddStock }) => {
       renderRow={(stock) => (
         <StockRow key={stock.id} stock={stock} onRemove={onRemove} />
       )}
-      sx={styles.tableContainer}
     />
   );
 };

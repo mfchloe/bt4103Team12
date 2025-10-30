@@ -73,7 +73,7 @@ const styles = {
   },
   statValue: {
     fontWeight: "bold",
-    fontSize: "1.8rem",
+    fontSize: "20px",
     color: "#111827",
   },
   trendChip: (trend) => ({

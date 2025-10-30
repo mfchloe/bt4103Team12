@@ -5,8 +5,8 @@ import { formatCurrency, formatPercentage } from "../../utils/mathHelpers";
 
 const StatsSection = ({ totalValue, totalPL, totalReturn, sharpeRatio }) => {
   return (
-    <Grid container spacing={3} mb={6}>
-      <Grid item xs={12} md={3}>
+    <Grid container spacing={3} sx={styles.container}>
+      <Grid item xs={12} md={3} sx={styles.cardGrid}>
         <StatCard
           title="Total Portfolio Value"
           value={formatCurrency(totalValue)}
@@ -14,7 +14,8 @@ const StatsSection = ({ totalValue, totalPL, totalReturn, sharpeRatio }) => {
           trend={totalReturn}
         />
       </Grid>
-      <Grid item xs={12} md={3}>
+
+      <Grid item xs={12} md={3} sx={styles.cardGrid}>
         <StatCard
           title="Today's P&L"
           value={formatCurrency(totalPL)}
@@ -22,7 +23,8 @@ const StatsSection = ({ totalValue, totalPL, totalReturn, sharpeRatio }) => {
           trend={totalPL >= 0 ? 2.1 : -2.1}
         />
       </Grid>
-      <Grid item xs={12} md={3}>
+
+      <Grid item xs={12} md={3} sx={styles.cardGrid}>
         <StatCard
           title="Total Return"
           value={formatPercentage(totalReturn, totalReturn >= 0)}
@@ -30,7 +32,8 @@ const StatsSection = ({ totalValue, totalPL, totalReturn, sharpeRatio }) => {
           trend={totalReturn}
         />
       </Grid>
-      <Grid item xs={12} md={3}>
+
+      <Grid item xs={12} md={3} sx={styles.cardGrid}>
         <StatCard
           title="Sharpe Ratio"
           value={sharpeRatio.toFixed(2)}
@@ -43,3 +46,14 @@ const StatsSection = ({ totalValue, totalPL, totalReturn, sharpeRatio }) => {
 };
 
 export default StatsSection;
+
+const styles = {
+  cardGrid: {
+    minWidth: 220,
+    maxWidth: 220,
+    height: 140,
+  },
+  container: {
+    mb: 6,
+  },
+};
