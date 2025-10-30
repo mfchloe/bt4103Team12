@@ -14,6 +14,7 @@ import AddStockDialog from "../components/home/AddStockDialog";
 import PortfolioChart from "../components/home/PortfolioChart";
 import StatsSection from "../components/home/StatsSection";
 import UserProfileDialog from "../components/home/UserProfileDialog.jsx";
+import ChartsSection from "../components/home/ChartsSection.jsx";
 import {
   calculateTotalValue,
   calculateTotalPL,
@@ -338,7 +339,7 @@ const Home = () => {
           sx={{ bgcolor: "white", borderRadius: 3, p: 3, mb: 6, boxShadow: 1 }}
         >
           {portfolio.length > 0 ? (
-            <PortfolioChart portfolio={portfolio} />
+            <ChartsSection portfolio={portfolio} />
           ) : (
             <Typography sx={styles.chartPreviewText}>
               Add stocks to your portfolio to see charts
