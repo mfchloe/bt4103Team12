@@ -41,7 +41,7 @@ const CustomTable = ({
   );
 
   return (
-    <TableContainer component={Paper} sx={styles.tableContainer}>
+    <TableContainer component={Paper} sx={[styles.tableContainer, sx]}>
       <Table>
         <TableHead>
           <TableRow>
