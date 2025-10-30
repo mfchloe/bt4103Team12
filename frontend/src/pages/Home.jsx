@@ -249,20 +249,16 @@ const Home = () => {
     [handleAddStock]
   );
 
-  const handleSaveProfile = async (payload) => {
-    const ref = doc(db, "users", currentUser.uid);
-    await setDoc(
-      ref,
-      {
+    const handleSaveProfile = async (payload) => {
+      const ref = doc(db, "users", currentUser.uid);
+      const docData = {
         ...payload,
         profileCompleted: true,
         updatedAt: serverTimestamp(),
-        // Add createdAt if new doc
-        createdAt: profileInitial ? undefined : serverTimestamp(),
-      },
-      { merge: true }
-    );
-  };
+        ...(profileInitial ? {} : { createdAt: serverTimestamp() }),
+      };
+      await setDoc(ref, docData, { merge: true });
+    };
 
   return (
     <Box sx={styles.container}>
