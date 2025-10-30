@@ -915,9 +915,7 @@ def get_efficient_frontier(filters: dict) -> dict:
     if price_subset.empty:
         return {"points": []}
 
-    pivot = (
-        price_subset.pivot_table(index="timestamp", columns="ISIN", values="closePrice")
-        .sort_index()
+    pivot = price_subset.pivot_table(index="timestamp", columns="ISIN", values="closePrice").sort_index()
     # Build ISIN -> name and symbol mappings
     name_map: Dict[str, str] = {}
     symbol_map: Dict[str, str] = {}
