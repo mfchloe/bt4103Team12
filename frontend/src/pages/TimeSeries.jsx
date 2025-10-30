@@ -307,7 +307,7 @@ const TimeSeries = () => {
     const halfPi = Math.PI / 2;
 
     chartData.forEach((series) => {
-      const { prices = [], symbol, isin } = series || {};
+      const { prices = [], symbol, isin, predictedSharpe } = series || {};
       if (!prices.length) return;
 
       const sorted = [...prices].sort(
@@ -361,6 +361,17 @@ const TimeSeries = () => {
         else scaledScore = 0;
       }
 
+      const forecastSharpe = Number.isFinite(predictedSharpe)
+        ? predictedSharpe
+        : null;
+
+      if (forecastSharpe !== null) {
+        const normalizedForecast = Math.atan(forecastSharpe) / halfPi;
+        if (Number.isFinite(normalizedForecast)) {
+          scaledScore = normalizedForecast;
+        }
+      }
+
       const clamped = Math.max(-1, Math.min(1, scaledScore));
       const rounded = Number.isFinite(clamped) ? Number(clamped.toFixed(4)) : 0;
 
@@ -372,6 +383,7 @@ const TimeSeries = () => {
         summary_label: label,
         direction,
         score: rounded,
+        rawSharpe: forecastSharpe,
       };
 
       const keySymbol = symbol || isin;
@@ -438,12 +450,17 @@ const TimeSeries = () => {
         const series = Array.isArray(data.series) ? data.series : [];
         const normalizedSeries = series.map((item) => {
           const matched = validAssets.find((stock) => stock.isin === item.isin);
+          const rawPredicted = Number(item?.predictedSharpe);
+          const predictedSharpeValue = Number.isFinite(rawPredicted)
+            ? rawPredicted
+            : null;
           return {
             ...item,
             isin: item.isin || matched?.isin,
             symbol: matched?.symbol || item.symbol || item.isin,
             name: matched?.name || item.name,
             prices: item.prices || [],
+            predictedSharpe: predictedSharpeValue,
           };
         });
         if (!ignore) {
@@ -577,6 +594,7 @@ const TimeSeries = () => {
     const cardBg = palette.light;
     const badgeColor = sentimentColor(data.summary_label);
     const scoreValue = Number.isFinite(data?.score) ? data.score : 0;
+    const rawSharpe = Number.isFinite(data?.rawSharpe) ? data.rawSharpe : null;
     const name =
       typeof stock?.name === "string" && stock.name.trim()
         ? stock.name.trim()
@@ -680,6 +698,18 @@ const TimeSeries = () => {
           >
             {scoreValue.toFixed(2)}
           </Typography>
+          {rawSharpe !== null && (
+            <Typography
+              sx={{
+                mt: 1,
+                fontSize: 12,
+                color: "#475569",
+                fontWeight: 500,
+              }}
+            >
+              Raw Sharpe: {rawSharpe.toFixed(2)}
+            </Typography>
+          )}
         </Box>
       </Paper>
     );

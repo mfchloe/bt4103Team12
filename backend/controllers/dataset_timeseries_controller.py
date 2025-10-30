@@ -190,6 +190,7 @@ async def get_historical_series(request: DatasetHistoricalSeriesRequest):
                 ],
                 isin=item.get("isin"),
                 name=item.get("name"),
+                predictedSharpe=item.get("predictedSharpe"),
             )
             for item in series_payload
         ]

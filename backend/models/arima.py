@@ -6,21 +6,60 @@ from pmdarima import auto_arima
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import matplotlib.pyplot as plt
 
+def forecast_sharpe_ratio(time_series: np.ndarray, forward_days: int) -> float:
+    """
+    Forecast the Sharpe ratio for the next `forward_days` using an auto-ARIMA fit
+    with exponential smoothing to mitigate flat multi-step forecasts.
+
+    Args:
+        time_series: 1-D array of historical returns (or return proxies).
+        forward_days: Number of days to project forward.
+
+    Returns:
+        Predicted Sharpe ratio (mean return divided by return standard deviation).
+    """
+    if forward_days <= 0:
+        raise ValueError("forward_days must be a positive integer.")
+
+    series = pd.Series(np.asarray(time_series, dtype=float)).dropna()
+    if series.empty:
+        raise ValueError("time_series must contain at least one numeric value.")
+
+    model = auto_arima(
+        series,
+        seasonal=False,
+        stepwise=True,
+        suppress_warnings=True,
+        error_action="ignore",
+        max_p=5,
+        max_q=5,
+        max_order=None,
+    )
+
+    forecast_horizon = max(forward_days, 5)
+    raw_forecast = np.asarray(model.predict(n_periods=forecast_horizon), dtype=float)
+
+    smoothed_forecast = (
+        pd.Series(raw_forecast)
+        .ewm(span=5, adjust=False)
+        .mean()
+        .to_numpy()
+    )
+    forecast_returns = smoothed_forecast[:forward_days]
+
+    expected_return = forecast_returns.mean()
+    risk = forecast_returns.std(ddof=0)
+
+    if np.isclose(risk, 0.0):
+        return 0.0
+
+    return float(expected_return / risk)
+
 def main():
 
     np.random.seed(42)
 
     model_type = "daily"
-
-    if model_type == "daily":
-        d1 = 5
-        d2 = 1
-    elif model_type == "weekly":
-        d1 = 25
-        d2 = 5
-    elif model_type == "monthly":
-        d1 = 100
-        d2 = 20
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     csv_path = os.path.join(current_dir, '../data/FAR-Trans/close_prices.csv')
@@ -148,94 +187,61 @@ def main():
     pivot_df = pivot_df.ffill().bfill()
     print(f"Kept ISINs (≥{min_days} days): {len(kept_isins)}")
 
-    for st_isin_idx in range(10):
-        target_isin = pivot_df.columns[st_isin_idx]
+    forward_days = 5
+    lookback_window = 252  # approximately one trading year
+    max_evaluations = 40   # cap to keep runtime manageable
+
+    for target_isin in pivot_df.columns[:5]:
         series = pivot_df[target_isin].dropna()
+        returns = series.pct_change().dropna()
 
-        # --- Train / Validation / Test split (70/10/20) ---
-        n = len(series)
-        train_end = int(n * 0.7)
-        valid_end = int(n * 0.8)
+        if len(returns) < lookback_window + forward_days:
+            print(f"Skipping {target_isin}: insufficient return history for evaluation.")
+            continue
 
-        train = series.iloc[:train_end]
-        valid = series.iloc[train_end:valid_end]
-        test  = series.iloc[valid_end:]
+        predicted_sharpes = []
+        actual_sharpes = []
+        evaluation_dates = []
 
-        print(f"Data split: train={len(train)}, valid={len(valid)}, test={len(test)}")
+        for eval_idx, end_idx in enumerate(range(lookback_window, len(returns) - forward_days, forward_days)):
+            if eval_idx >= max_evaluations:
+                break
 
-        # --- Fit Auto-ARIMA on training data ---
-        auto_model = auto_arima(
-            train,
-            seasonal=False,
-            stepwise=True,
-            trace=True,              # show tested models
-            suppress_warnings=True,
-            max_p=5, max_q=5,
-            d=1,                     # differencing fixed to 1
-            max_order=None,
-            error_action="ignore"
+            history = returns.iloc[end_idx - lookback_window:end_idx]
+            future = returns.iloc[end_idx:end_idx + forward_days]
+
+            predicted = forecast_sharpe_ratio(history.to_numpy(), forward_days)
+            future_std = future.std(ddof=0)
+            actual = float(future.mean() / future_std) if not np.isclose(future_std, 0.0) else 0.0
+
+            predicted_sharpes.append(predicted)
+            actual_sharpes.append(actual)
+            evaluation_dates.append(future.index[-1])
+
+        if not predicted_sharpes:
+            print(f"Skipping {target_isin}: no evaluation windows generated.")
+            continue
+
+        mse = mean_squared_error(actual_sharpes, predicted_sharpes)
+        mae = mean_absolute_error(actual_sharpes, predicted_sharpes)
+        r2 = r2_score(actual_sharpes, predicted_sharpes)
+
+        print(
+            f"{target_isin}: windows={len(predicted_sharpes)} "
+            f"MSE={mse:.6f} MAE={mae:.6f} R2={r2:.4f}"
         )
 
-        print("\nBest ARIMA order found:", auto_model.order)
-
-        # --- In-sample fit (train RMSE) ---
-        train_pred = auto_model.predict_in_sample()
-        train = train[1:]  # align (first diff dropped)
-        train_pred = train_pred[1:]
-        aligned_train = pd.concat([train, pd.Series(train_pred, index=train.index)], axis=1).dropna()
-        aligned_train.columns = ["actual", "predicted"]
-        train_rmse = np.sqrt(mean_squared_error(aligned_train["actual"], aligned_train["predicted"]))
-        print(f"Train RMSE: {train_rmse:.4f}")
-
-        # --- Rolling d2-day forecast on validation set ---
-        val_predictions = []
-        i = 0
-        while i < len(valid):
-            steps = min(d2, len(valid) - i)
-            forecast = auto_model.predict(n_periods=steps)
-            val_predictions.extend(forecast)
-
-            auto_model.update(valid.iloc[i:i+steps])
-            i += steps
-
-        val_pred_series = pd.Series(val_predictions, index=valid.index)
-        val_rmse = np.sqrt(mean_squared_error(valid, val_pred_series))
-        print(f"Validation RMSE: {val_rmse:.4f}")
-
-        # --- Rolling 5-day forecast on test set ---
-        predictions = []
-        i = 0
-        while i < len(test):
-            steps = min(d2, len(test) - i)
-            forecast = auto_model.predict(n_periods=steps)
-            predictions.extend(forecast)
-
-            auto_model.update(test.iloc[i:i+steps])
-            i += steps
-
-        pred_series = pd.Series(predictions, index=test.index)
-        test_rmse = np.sqrt(mean_squared_error(test, pred_series))
-        std = np.std(series)
-        std_test_rmse = test_rmse / std
-        print(f"Test RMSE: {test_rmse:.4f}")
-        print(f"Standardized Test RMSE: {std_test_rmse:.4f}")
-
-        # --- Plot ---
-        plt.figure(figsize=(12,5))
-        plt.plot(train.index, train, label="Train", color="blue")
-        plt.plot(valid.index, valid, label="Validation", color="green")
-        plt.plot(test.index, test, label="Test", color="red")
-
-        plt.plot(train.index, aligned_train["predicted"], "--", label="Train Forecast", color="blueviolet")
-        plt.plot(valid.index, val_pred_series, "--", label=f"Validation Forecast ({d2}-day cycle)", color="teal")
-        plt.plot(test.index, pred_series, "--", label=f"Test Forecast ({d2}-day cycle)", color="coral")
-
+        plt.figure(figsize=(12, 5))
+        plt.plot(evaluation_dates, actual_sharpes, label="Actual Sharpe", color="steelblue")
+        plt.plot(evaluation_dates, predicted_sharpes, label="Predicted Sharpe", color="darkorange")
+        plt.axhline(0, color="gray", linestyle="--", linewidth=0.8)
+        plt.title(f"Sharpe Forecast vs Actual ({target_isin})")
+        plt.xlabel("Date")
+        plt.ylabel("Sharpe Ratio")
         plt.legend()
-        plt.title(
-            f"ARIMA {auto_model.order} on {target_isin} std.rmse={std_test_rmse:.4f}"
-        )
         plt.tight_layout()
-        output = os.path.join(current_dir, f'results/{model_type}/arima_{target_isin}.png')
+
+        output = os.path.join(current_dir, f"results/{model_type}/sharpe_forecast_{target_isin}.png")
         os.makedirs(os.path.dirname(output), exist_ok=True)
         plt.savefig(output)
         plt.close()

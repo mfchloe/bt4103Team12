@@ -48,6 +48,7 @@ class HistoricalSeriesItem(BaseModel):
     prices: List[HistoricalSeriesPoint]
     isin: Optional[str] = None
     name: Optional[str] = None
+    predictedSharpe: Optional[float] = None
 
 
 class HistoricalSeriesRequest(BaseModel):

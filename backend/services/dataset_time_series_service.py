@@ -1,10 +1,12 @@
 import logging
+import math
 from datetime import date
 from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+from models.arima import forecast_sharpe_ratio
 
 logger = logging.getLogger(__name__)
 
@@ -260,6 +262,7 @@ class DatasetTimeSeriesService:
             return []
 
         series: List[Dict[str, Any]] = []
+        forward_days = 5
         for isin in normalized_isins:
             asset_rows = filtered.loc[filtered["ISIN"] == isin]
             if asset_rows.empty:
@@ -277,6 +280,18 @@ class DatasetTimeSeriesService:
             if not prices:
                 continue
 
+            predicted_sharpe = None
+            try:
+                close_values = asset_rows["closePrice"].astype(float)
+                returns = close_values.pct_change().dropna()
+                if len(returns) >= 10:
+                    forecast = forecast_sharpe_ratio(returns.to_numpy(), forward_days)
+                    if math.isfinite(forecast):
+                        predicted_sharpe = float(forecast)
+            except Exception as error:  # pragma: no cover - defensive safety
+                logger.warning("Sharpe forecast failed for %s: %s", isin, error)
+                predicted_sharpe = None
+
             asset_info = self._get_asset_info(isin)
             symbol = asset_info.get("assetShortName") or asset_info.get("assetName") or isin
             name = asset_info.get("assetName") or asset_info.get("assetShortName") or isin
@@ -287,6 +302,7 @@ class DatasetTimeSeriesService:
                     "symbol": symbol,
                     "name": name,
                     "prices": prices,
+                    "predictedSharpe": predicted_sharpe,
                 }
             )
 
