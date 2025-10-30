@@ -58,9 +58,9 @@ export const EfficientFrontierChart = ({
     : 0;
 
   const legendStops = [
-    { label: minSharpe, position: "Top" },
+    { label: maxSharpe, position: "Top" },
     { label: (minSharpe + maxSharpe) / 2, position: "Mid" },
-    { label: maxSharpe, position: "Bottom" },
+    { label: minSharpe, position: "Bottom" },
   ];
 
   const formatSharpe = (value) =>
@@ -70,7 +70,11 @@ export const EfficientFrontierChart = ({
     maxSharpe,
     minSharpe,
     maxSharpe
-  )} 0%, ${interpolateColor((minSharpe + maxSharpe) / 2, minSharpe, maxSharpe)} 50%, ${interpolateColor(
+  )} 0%, ${interpolateColor(
+    (minSharpe + maxSharpe) / 2,
+    minSharpe,
+    maxSharpe
+  )} 50%, ${interpolateColor(
     minSharpe,
     minSharpe,
     maxSharpe
@@ -240,6 +244,9 @@ export const EfficientFrontierChart = ({
 };
 
 export default EfficientFrontierChart;
+
+
+
 
 
 
