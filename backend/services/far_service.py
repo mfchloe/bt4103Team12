@@ -294,7 +294,7 @@ def get_customer_transactions(customer_id: str):
 #     if not isinstance(capacity_str, str):
 #         return None
 #     import re
-#     s = capacity_str.replace("鈧?, "").replace(",", "").replace("_", " ").strip().lower()
+#     s = capacity_str.replace("\u20ac", "").replace(",", "").replace("_", " ").strip().lower()
 #     try:
 #         # Extract numeric tokens with optional k/m suffix, e.g., 30k, 300k, 1m
 #         tokens = re.findall(r"(\d+)\s*([km]?)", s)
@@ -390,7 +390,7 @@ def _parse_capacity_to_value(capacity_str: Optional[str]) -> Optional[float]:
     if not isinstance(capacity_str, str):
         return None
     import re
-    s = capacity_str.replace("鈧?, "").replace(",", "").replace("_", " ").strip().lower()
+    s = capacity_str.replace("\u20ac", "").replace(",", "").replace("_", " ").strip().lower()
     try:
         # Extract numeric tokens with optional k/m suffix, e.g., 30k, 300k, 1m
         tokens = re.findall(r"(\d+)\s*([km]?)", s)
