@@ -963,5 +963,22 @@ def get_efficient_frontier(filters: dict) -> dict:
             }
         )
 
+    if points:
+        returns_array = np.array([pt["return_daily"] for pt in points], dtype=float)
+        volatility_array = np.array([pt["volatility"] for pt in points], dtype=float)
+
+        if len(points) >= 5:
+            low_ret, high_ret = np.quantile(returns_array, [0.01, 0.99])
+            low_vol, high_vol = np.quantile(volatility_array, [0.01, 0.99])
+
+            filtered = []
+            for pt in points:
+                r = pt["return_daily"]
+                v = pt["volatility"]
+                if low_ret <= r <= high_ret and low_vol <= v <= high_vol:
+                    filtered.append(pt)
+            if filtered:
+                points = filtered
+
     points.sort(key=lambda item: item["volatility"])  # left-to-right
     return {"points": points}
