@@ -1,13 +1,6 @@
-import {
-  Table,
-  TableHead,
-  TableRow,
-  TableCell,
-  TableBody,
-  TableSortLabel,
-  Typography,
-} from "@mui/material";
-import { useMemo, useState, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
+import { TableCell, TableRow, Typography, TableSortLabel } from "@mui/material";
+import CustomTable from "../CustomTable";
 
 const HEADERS = [
   { id: "date", label: "Date" },
@@ -57,69 +50,62 @@ export default function TransactionsTable({ rows }) {
     return [...rows].sort(comparator);
   }, [rows, order, orderBy]);
 
+  // renderRow function for CustomTable
+  const renderRow = (t) => (
+    <TableRow key={t.id} hover>
+      <TableCell>{t.date}</TableCell>
+      <TableCell>
+        <Typography sx={{ fontWeight: 600, lineHeight: 1 }}>
+          {t.stock}
+        </Typography>
+      </TableCell>
+      <TableCell>{t.category}</TableCell>
+      <TableCell>{t.buy_sell}</TableCell>
+      <TableCell align="right">
+        {t.shares != null ? t.shares.toLocaleString() : "-"}
+      </TableCell>
+      <TableCell align="right">
+        {t.price != null
+          ? t.price.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })
+          : "-"}
+      </TableCell>
+      <TableCell align="right">
+        {t.total != null
+          ? t.total.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })
+          : "-"}
+      </TableCell>
+    </TableRow>
+  );
+
+  // Custom header with sorting
+  const headersWithSort = HEADERS.map((header) => ({
+    label: header.label,
+    align: header.numeric ? "right" : "left",
+    render: (onClick) => (
+      <TableSortLabel
+        active={orderBy === header.id}
+        direction={orderBy === header.id ? order : "asc"}
+        onClick={onClick}
+      >
+        {header.label}
+      </TableSortLabel>
+    ),
+    id: header.id,
+  }));
+
   return (
-    <Table size="small">
-      <TableHead sx={{ background: "#f7f7f8" }}>
-        <TableRow>
-          {HEADERS.map((header) => (
-            <TableCell
-              key={header.id}
-              align={header.numeric ? "right" : "left"}
-              sortDirection={orderBy === header.id ? order : false}
-            >
-              <TableSortLabel
-                active={orderBy === header.id}
-                direction={orderBy === header.id ? order : "asc"}
-                onClick={() => handleSort(header.id)}
-              >
-                {header.label}
-              </TableSortLabel>
-            </TableCell>
-          ))}
-        </TableRow>
-      </TableHead>
-
-      <TableBody>
-        {sortedRows.map((t) => (
-          <TableRow key={t.id} hover>
-            <TableCell>{t.date}</TableCell>
-            <TableCell>
-              <Typography sx={{ fontWeight: 600, lineHeight: 1 }}>
-                {t.stock}
-              </Typography>
-            </TableCell>
-            <TableCell>{t.category}</TableCell>
-            <TableCell>{t.buy_sell}</TableCell>
-            <TableCell align="right">
-              {t.shares != null ? t.shares.toLocaleString() : "-"}
-            </TableCell>
-            <TableCell align="right">
-              {t.price != null
-                ? t.price.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })
-                : "-"}
-            </TableCell>
-            <TableCell align="right">
-              {t.total != null
-                ? t.total.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })
-                : "-"}
-            </TableCell>
-          </TableRow>
-        ))}
-
-        {sortedRows.length === 0 && (
-          <TableRow>
-            <TableCell colSpan={HEADERS.length} align="center" sx={{ py: 6, color: "text.secondary" }}>
-              You have no transactions.
-            </TableCell>
-          </TableRow>
-        )}
-      </TableBody>
-    </Table>
+    <CustomTable
+      headers={headersWithSort}
+      data={sortedRows}
+      renderRow={renderRow}
+      rowsPerPageOptions={[5, 10, 25]}
+      sx={{ borderRadius: 3, boxShadow: 1 }}
+    />
   );
 }

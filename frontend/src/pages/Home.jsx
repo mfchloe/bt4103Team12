@@ -161,28 +161,28 @@ const Home = () => {
   const totalReturn = calculateTotalReturn(portfolio);
   const sharpeRatio = calculateSharpeRatio(portfolio);
 
-  const handleAddStock = useCallback(
-    async (stock) => {
-      const payload = {
-        symbol: stock.symbol?.toUpperCase(),
-        name: stock.name,
-        shares: Number(stock.shares),
-        buy_price: Number(stock.buyPrice),
-        buy_date: stock.buyDate
-          ? dayjs(stock.buyDate).format("YYYY-MM-DD")
-          : null,
-        current_price:
-          stock.currentPrice !== undefined ? Number(stock.currentPrice) : null,
-      };
+  const handleAddStock = useCallback((stock) => {
+    // Create a new stock object locally
+    const newStock = {
+      id: `local-${Date.now()}`, // unique id for React key
+      symbol: stock.symbol?.toUpperCase(),
+      name: stock.name,
+      shares: Number(stock.shares),
+      buyPrice: Number(stock.buyPrice),
+      buyDate: stock.buyDate ? dayjs(stock.buyDate).format("YYYY-MM-DD") : null,
+      currentPrice:
+        stock.currentPrice !== undefined ? Number(stock.currentPrice) : null,
+      isSynthetic: false,
+      lastSeenPrice:
+        stock.currentPrice !== undefined ? Number(stock.currentPrice) : null,
+      lastSeenDate: stock.buyDate
+        ? dayjs(stock.buyDate).format("YYYY-MM-DD")
+        : null,
+      isNew: true, // mark as new for highlighting
+    };
 
-      const created = await authFetch("/api/portfolio/", {
-        method: "POST",
-        body: payload,
-      });
-      setPortfolio((prev) => [...prev, mapServerItem(created)]);
-    },
-    [authFetch, mapServerItem]
-  );
+    setPortfolio((prev) => [...prev, newStock]);
+  }, []);
 
   const handleRemoveStock = useCallback(
     async (id) => {

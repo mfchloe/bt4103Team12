@@ -1,13 +1,9 @@
+import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import {
   Box,
-  Table,
-  TableBody,
   TableCell,
-  TableContainer,
-  TableHead,
   TableRow,
-  Paper,
   IconButton,
   Typography,
   Tooltip,
@@ -18,6 +14,7 @@ import {
   formatPercentage,
   formatDate,
 } from "../../utils/mathHelpers";
+import CustomTable from "../CustomTable";
 
 const POSITIVE_COLOR = "#16a34a";
 const NEGATIVE_COLOR = "#dc2626";
@@ -34,6 +31,7 @@ const TABLE_HEADERS = [
   { label: "Action", align: "right" },
 ];
 
+// ---------------- EmptyPortfolio ----------------
 const EmptyPortfolio = ({ onAddStock }) => (
   <Box sx={styles.emptyPortfolioContainer}>
     <Typography sx={{ color: "#9ca3af", fontSize: "14px", mb: 1 }}>
@@ -45,36 +43,35 @@ const EmptyPortfolio = ({ onAddStock }) => (
   </Box>
 );
 
-const TableHeader = () => (
-  <TableHead>
-    <TableRow>
-      {TABLE_HEADERS.map((header) => (
-        <TableCell
-          key={header.label}
-          align={header.align}
-          sx={styles.tableHeaderCell}
-        >
-          {header.label}
-        </TableCell>
-      ))}
-    </TableRow>
-  </TableHead>
-);
-
+// ---------------- StockRow ----------------
 const StockRow = ({ stock, onRemove }) => {
   const { totalValue, pl, returnPercent, isPositive } =
     calculateStockStats(stock);
   const plColor = isPositive ? POSITIVE_COLOR : NEGATIVE_COLOR;
   const canRemove = !stock.isSynthetic;
-  const lastSeenPrice =
-    stock.lastSeenPrice !== undefined && stock.lastSeenPrice !== null
-      ? stock.lastSeenPrice
-      : stock.buyPrice;
-  const lastSeenDate = stock.lastSeenDate || stock.buyDate;
+  const lastSeenPrice = stock.lastSeenPrice ?? stock.buyPrice;
+  const lastSeenDate = stock.lastSeenDate ?? stock.buyDate;
 
   return (
-    <TableRow sx={styles.tableRow}>
+    <TableRow
+      sx={{
+        ...styles.tableRow,
+        bgcolor: stock.isNew ? "#e6f4ea" : "inherit", // light green background if new
+      }}
+    >
       <TableCell sx={styles.symbolCell}>
+        {stock.isNew && (
+          <span
+            style={{
+              display: "inline-block",
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              backgroundColor: "#16a34a",
+              marginRight: 6,
+            }}
+          />
+        )}
         <Tooltip title={stock.name || stock.symbol} arrow disableInteractive>
           <span>{stock.symbol}</span>
         </Tooltip>
@@ -93,7 +90,10 @@ const StockRow = ({ stock, onRemove }) => {
       </TableCell>
       <TableCell align="right">
         {canRemove ? (
-          <IconButton onClick={() => onRemove(stock.id)} sx={styles.deleteButton}>
+          <IconButton
+            onClick={() => onRemove(stock.id)}
+            sx={styles.deleteButton}
+          >
             <Trash2 size={18} />
           </IconButton>
         ) : (
@@ -104,6 +104,7 @@ const StockRow = ({ stock, onRemove }) => {
   );
 };
 
+// ---------------- PortfolioTable using CustomTable ----------------
 const PortfolioTable = ({ portfolio, onRemove, onAddStock }) => {
   const filteredPortfolio = portfolio.filter(
     (stock) => Number(stock.shares) > 0
@@ -114,21 +115,20 @@ const PortfolioTable = ({ portfolio, onRemove, onAddStock }) => {
   }
 
   return (
-    <TableContainer component={Paper} sx={styles.tableContainer}>
-      <Table>
-        <TableHeader />
-        <TableBody>
-          {filteredPortfolio.map((stock) => (
-            <StockRow key={stock.id} stock={stock} onRemove={onRemove} />
-          ))}
-        </TableBody>
-      </Table>
-    </TableContainer>
+    <CustomTable
+      headers={TABLE_HEADERS}
+      data={filteredPortfolio}
+      renderRow={(stock) => (
+        <StockRow key={stock.id} stock={stock} onRemove={onRemove} />
+      )}
+      sx={styles.tableContainer}
+    />
   );
 };
 
 export default PortfolioTable;
 
+// ---------------- Styles ----------------
 const styles = {
   emptyPortfolioContainer: {
     bgcolor: "white",
@@ -148,16 +148,7 @@ const styles = {
       textDecoration: "underline",
     },
   },
-  tableContainer: {
-    borderRadius: 3,
-    boxShadow: 1,
-  },
-  tableHeaderCell: {
-    fontWeight: "bold",
-  },
-  tableRow: {
-    "&:hover": { bgcolor: "#f9fafb" },
-  },
+
   symbolCell: {
     fontWeight: "medium",
   },
