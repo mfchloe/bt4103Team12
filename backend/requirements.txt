@@ -8,6 +8,8 @@ pyarrow
 uvicorn==0.38.0 #modified
 yfinance
 nltk
+numpy==1.26.4  #modified (for junzhe update)
+pmdarima==2.0.4  #modified (for junzhe update)
 sqlalchemy
 passlib[bcrypt]==1.7.4 #modified
 bcrypt==4.1.3 #added
