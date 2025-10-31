@@ -4,7 +4,7 @@ import numpy as np
 from collections import defaultdict
 from pmdarima import auto_arima
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 def forecast_sharpe_ratio(time_series: np.ndarray, forward_days: int) -> float:
     """
@@ -231,20 +231,20 @@ def main():
             f"MSE={mse:.6f} MAE={mae:.6f} R2={r2:.4f}"
         )
 
-        plt.figure(figsize=(12, 5))
-        plt.plot(evaluation_dates, actual_sharpes, label="Actual Sharpe", color="steelblue")
-        plt.plot(evaluation_dates, predicted_sharpes, label="Predicted Sharpe", color="darkorange")
-        plt.axhline(0, color="gray", linestyle="--", linewidth=0.8)
-        plt.title(f"Sharpe Forecast vs Actual ({target_isin})")
-        plt.xlabel("Date")
-        plt.ylabel("Sharpe Ratio")
-        plt.legend()
-        plt.tight_layout()
+        # plt.figure(figsize=(12, 5))
+        # plt.plot(evaluation_dates, actual_sharpes, label="Actual Sharpe", color="steelblue")
+        # plt.plot(evaluation_dates, predicted_sharpes, label="Predicted Sharpe", color="darkorange")
+        # plt.axhline(0, color="gray", linestyle="--", linewidth=0.8)
+        # plt.title(f"Sharpe Forecast vs Actual ({target_isin})")
+        # plt.xlabel("Date")
+        # plt.ylabel("Sharpe Ratio")
+        # plt.legend()
+        # plt.tight_layout()
 
         output = os.path.join(current_dir, f"results/{model_type}/sharpe_forecast_{target_isin}.png")
         os.makedirs(os.path.dirname(output), exist_ok=True)
-        plt.savefig(output)
-        plt.close()
+        # plt.savefig(output)
+        # plt.close()
 
 if __name__ == "__main__":
     main()
