@@ -13,7 +13,10 @@ from controllers import (
     portfolio_controller,
     sentiment_controller,
     yfinance_controller,
+    cluster_controller
 )
+from services.cluster_service import ClusterService 
+
 from database import Base, engine, SessionLocal
 from database_migrations import ensure_portfolio_owner_columns
 from models.far_customers import FarCustomer, FarTransaction
@@ -116,6 +119,13 @@ def on_startup():
     load_dataset_into_db()
     logging.info("Dataset bootstrap complete")
 
+    artifcasts_dir = os.path.join(os.path.dirname(__file__), "artifacts")
+    try:
+        cluster_controller._service = ClusterService(artifcasts_dir)
+        logging.info("ClusterService loaded successfully")
+    except Exception as e:
+        logging.exception(f"Failed to load ClusterService: {e}")
+
 
 # ROUTERS HERE
 # include routers
@@ -125,6 +135,7 @@ app.include_router(yfinance_controller.router)
 app.include_router(dataset_timeseries_controller.router)
 app.include_router(far_controller.router)
 app.include_router(sentiment_controller.router)
+app.include_router(cluster_controller.router)
 
 
 @app.get("/")
