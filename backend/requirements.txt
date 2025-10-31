@@ -16,3 +16,4 @@ python-dotenv
 google-auth
 httpx
 PyJWT[crypto]
+pmdarima
