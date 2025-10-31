@@ -1,5 +1,9 @@
 import { FaPiggyBank } from "react-icons/fa6";
-import { MdAccessTimeFilled, MdDashboard } from "react-icons/md";
+import {
+  MdAccessTimeFilled,
+  MdDashboard,
+  MdAccountCircle,
+} from "react-icons/md";
 
 export const navItems = [
   {
@@ -16,5 +20,10 @@ export const navItems = [
     path: "/far-dashboard",
     label: "FAR Dashboard",
     icon: MdDashboard,
+  },
+  {
+    path: "/profile",
+    label: "Profile",
+    icon: MdAccountCircle,
   },
 ];
