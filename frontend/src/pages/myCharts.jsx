@@ -1,84 +1,92 @@
 import React, { useState, useEffect } from "react";
-import { auth, storage } from "../../firebase"; // make sure storage is exported
-import { onAuthStateChanged } from "firebase/auth";
+import { storage } from "../../firebase"; // make sure storage is exported
 import { ref, getDownloadURL } from "firebase/storage";
 import Papa from "papaparse";
 
 import PieChart from "../components/myCharts/PieChart";
 import BarChart from "../components/myCharts/BarChart";
 import LineChart from "../components/myCharts/LineChart";
-
-console.log("Firebase auth object:", auth);
+import { useAuth } from "../context/AuthContext.jsx";
 
 export default function MyCharts() {
+  const { isFarCustomer, isFirebaseUser, farCustomerSession, user: firebaseUser } = useAuth();
   const [transactions, setTransactions] = useState([]);
-  const [userId, setUserId] = useState(null);
-  const [userDisplayName, setUserDisplayName] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Listen for authentication state
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        console.log("User signed in:", user.uid, user.displayName); // debug signed-in user
-        setUserId(user.uid);
-        setUserDisplayName(user.displayName);
-      } else {
-        console.log("No user signed in");
-        setUserId(null);
+    let cancelled = false;
+
+    const run = async () => {
+      // Firebase user (Cold-start user)
+      if (isFirebaseUser && !isFarCustomer) {
+        if (!cancelled) {
+          setTransactions([]);
+          setLoading(false);
+        }
+        return;
+      }
+
+      // Not authenticated in any mode
+      if (!isFarCustomer && !isFirebaseUser) {
+        if (!cancelled) {
+          setTransactions([]);
+          setLoading(false);
+        }
+        return;
+      }
+
+      // Far-Trans customer
+      if (isFarCustomer && farCustomerSession?.customerId) {
+        try {
+          const fileRef = ref(storage, "../../backend/datasets/customer_information.csv");
+          const url = await getDownloadURL(fileRef);
+
+          await new Promise((resolve, reject) => {
+            Papa.parse(url, { download: true, header: true, complete: (results) => {
+              if (cancelled) return resolve();
+              const allRows = Array.isArray(results.data) ? results.data : [];
+              const filtered = allRows.filter(
+                (t) => String(t.customerID).trim() === String(farCustomerSession.customerId).trim()
+              );
+              setTransactions(filtered);
+              setLoading(false);
+              resolve();
+            },
+            error: (err) => {
+              if (!cancelled) {
+                console.error("CSV parse error:", err);
+                setTransactions([]);
+                setLoading(false);
+              }
+              reject(err);
+            }});
+          });
+        } catch (err) {
+          if (!cancelled) {
+            console.error("Error loading FAR transactions:", err);
+            setTransactions([]);
+            setLoading(false);
+          }
+        }
+        return;
+      }
+
+      if (!cancelled) {
         setTransactions([]);
         setLoading(false);
       }
-    });
+    };
 
-    return () => unsubscribe();
-  }, []);
+    setLoading(true);
+    run();
 
-  // Fetch CSV only if user is authenticated
-  useEffect(() => {
-    if (!userId) {
-      console.log("No userId yet, skipping CSV fetch");
-      return; // do nothing if not signed in
-    }
+    return () => cancelled = true;
+  }, [isFarCustomer, isFirebaseUser, farCustomerSession]);
 
-    console.log("Fetching CSV for user:", userDisplayName);
-
-    const fileRef = ref(storage, "customer_transactions.csv"); // adjust path if needed
-
-    getDownloadURL(fileRef)
-      .then((url) => {
-        console.log("Got download URL:", url);
-
-        Papa.parse(url, {
-          download: true,
-          header: true,
-          complete: (results) => {
-            console.log("Raw CSV data:", results.data);
-
-            const userTransactions = results.data.filter(
-              (t) => t.customerID === userDisplayName
-            );
-
-            console.log("Filtered transactions for user:", userTransactions);
-
-            setTransactions(userTransactions);
-            setLoading(false);
-          },
-          error: (err) => {
-            console.error("Error parsing CSV:", err);
-            setLoading(false);
-          },
-        });
-      })
-      .catch((error) => {
-        console.error("Error getting download URL:", error);
-        setLoading(false);
-      });
-  }, [userId]); // added userDisplayName to dependency
-
-  if (!userId) return <p>Please log in to view your transaction charts.</p>;
+  if (!isFarCustomer && !isFirebaseUser) return <p>Please log in to view your transaction charts.</p>;
+  if (isFirebaseUser && !isFarCustomer) return <p>You don't have any past transactions yet.</p>
   if (loading) return <p>Loading transactions...</p>;
-  if (!transactions.length) return <p>No transactions found for your account.</p>;
+  if (!transactions.length) return <p>You don't have any past transactions yet.</p>;
 
   return (
     <div style={{ padding: "2rem" }}>
@@ -91,7 +99,6 @@ export default function MyCharts() {
     </div>
   );
 }
-
 
 
 
