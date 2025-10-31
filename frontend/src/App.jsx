@@ -10,19 +10,37 @@ import NotFound from "./pages/NotFound";
 import Login from "./pages/Login.jsx";
 import Transactions from "./pages/Transactions.jsx";
 import MyCharts from "./pages/myCharts.jsx";
+import Profile from "./pages/Profile.jsx";
 
 const App = () => {
   return (
     <BrowserRouter>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={ <RequireAuth> <Home /> </RequireAuth>} />
-          <Route path="/transactions" element={<RequireAuth> <Transactions /> </RequireAuth>} />
+          <Route
+            path="/"
+            element={
+              <RequireAuth>
+                {" "}
+                <Home />{" "}
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/transactions"
+            element={
+              <RequireAuth>
+                {" "}
+                <Transactions />{" "}
+              </RequireAuth>
+            }
+          />
           <Route path="/timeseries" element={<TimeSeries />} />
           <Route path="/far-dashboard" element={<FARDashboard />} />
           <Route path="*" element={<NotFound />} />
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/myCharts" element={<MyCharts />} />
+          <Route path="/profile" element={<Profile />} />
         </Route>
         <Route path="/login" element={<Login />} />
       </Routes>
