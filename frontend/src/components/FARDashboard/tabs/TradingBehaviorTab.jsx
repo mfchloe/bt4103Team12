@@ -4,7 +4,6 @@ import { HistogramCard } from "../HistogramCard";
 import { ActivityLineChart } from "../ActivityLineChart";
 import { CategoryBarCard } from "../CategoryBarCard";
 import { ScatterChartCard } from "../ScatterChartCard";
-
 export default function TradingBehaviorTab({
   investorTypeData,
   activityHist,
@@ -53,6 +52,7 @@ export default function TradingBehaviorTab({
           bins={explorationHist.bins}
         />
       )}
+
       <ScatterChartCard
         title="Diversification vs Concentration"
         data={

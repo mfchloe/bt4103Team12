@@ -8,7 +8,7 @@ import PieChartIcon from "@mui/icons-material/PieChart";
 import StatCard from "../components/StatCard";
 import { FilterChartsPanel } from "../components/FARDashboard/FilterChartsPanel";
 import { useApi } from "../hooks/useApi";
-
+import AffinityTab from "../components/FARDashboard/tabs/AffinityTab";
 import TradingBehaviorTab from "../components/FARDashboard/tabs/TradingBehaviorTab";
 import AssetIndustryTab from "../components/FARDashboard/tabs/AssetIndustryTab";
 import { DARK_BLUE, LIGHT_BLUE } from "../constants/colors";
@@ -175,7 +175,26 @@ export default function FARDashboard() {
     body
   );
 
-  console.log(diversificationScatter);
+  const [riskReturnGroupBy, setRiskReturnGroupBy] = useState("assetCategory");
+
+  const { data: riskReturnByCategory } = useApi("/api/far/risk-return-matrix", {
+    ...body,
+    group_by: riskReturnGroupBy,
+  });
+
+  const { data: affinityMatrixData } = useApi("/api/far/affinity-matrix", {
+    filters: backendFilters,
+    attributes: [
+      "riskLevel",
+      "investmentCapacity",
+      "customerType",
+      "investor_type",
+      "historical_investment_style",
+    ],
+    asset_column: "preferred_asset_category", // or try "preferred_market", "preferred_subcategory"
+  });
+  console.log("Affinity Matrix Data:", affinityMatrixData);
+
   const combinedInvestmentCapacity = useMemo(() => {
     if (!investmentCapacityData?.rows) return [];
 
@@ -191,7 +210,6 @@ export default function FARDashboard() {
     return Object.entries(grouped).map(([label, value]) => ({ label, value }));
   }, [investmentCapacityData]);
 
-  console.log("Industry Prefs:", industryPrefs);
   // Cluster data - affected by ALL filters
   const { data: clusterData } = useApi("/api/far/cluster-breakdown", {
     filters: filtersWithoutCluster,
@@ -294,15 +312,8 @@ export default function FARDashboard() {
             />
           </Box>
 
-          {/* Main Dashboard Content */}
           <Box sx={{ flex: 1 }}>
-            <Box
-              sx={{
-                flex: 1,
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
+            <Box sx={{ flex: 1, display: "flex", alignItems: "center" }}>
               <Box sx={styles.tabContainer}>
                 <Tabs
                   value={activeTab}
@@ -311,7 +322,11 @@ export default function FARDashboard() {
                   scrollButtons="auto"
                   TabIndicatorProps={{ style: { display: "none" } }}
                 >
-                  {["Trading Behavior", "Asset & Industry"].map((label, i) => (
+                  {[
+                    "Trading Behavior",
+                    "Asset & Industry",
+                    "Affinity Overview",
+                  ].map((label, i) => (
                     <Tab
                       key={label}
                       label={label}
@@ -343,7 +358,13 @@ export default function FARDashboard() {
                   topAssets={topAssets}
                   setSelectedAsset={setSelectedAsset}
                   efficientFrontier={efficientFrontier}
+                  riskReturnByCategory={riskReturnByCategory}
+                  groupBy={riskReturnGroupBy}
+                  onChangeGroupBy={setRiskReturnGroupBy}
                 />
+              )}
+              {activeTab === 2 && (
+                <AffinityTab affinityMatrixData={affinityMatrixData} />
               )}
             </Box>
           </Box>

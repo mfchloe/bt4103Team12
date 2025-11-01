@@ -6,17 +6,7 @@ from fastapi.encoders import jsonable_encoder
 import math
 import numbers
 
-from models.far_model import (
-    ActivitySeriesRequest,
-    ExplainRequest,
-    HistogramRequest,
-    CategoryBreakdownRequest,
-    MetricsRequest,
-    ScatterSampleRequest,
-    SectorPrefsRequest,
-    TopAssetsRequest,
-    EfficientFrontierRequest,
-)
+from models.far_model import *
 from services import far_service
 
 router = APIRouter(prefix="/api/far", tags=["far"])
@@ -137,3 +127,25 @@ def efficient_frontier(req: EfficientFrontierRequest):
             req.filters.model_dump(exclude_none=True)
         )
     )
+
+
+# NEW: Risk-Return Matrix Endpoint
+@router.post("/risk-return-matrix")
+def risk_return_matrix(req: RiskReturnMatrixRequest):
+    """
+    Get risk-return profile grouped by specified column.
+    
+    Returns scatter plot data showing average risk score vs. return proxy
+    for each group (e.g., asset category, cluster).
+    """
+    return _clean(
+        far_service.get_risk_return_matrix(
+            req.filters.model_dump(exclude_none=True),
+            req.group_by
+        )
+    )
+
+# NEW: Affinity Matrix Endpoint
+@router.post("/affinity-matrix")
+def affinity_matrix(req: AffinityMatrixRequest):
+    return _clean(far_service.get_affinity_matrix(req.filters.model_dump(exclude_none=True), req.attributes, req.asset_column))

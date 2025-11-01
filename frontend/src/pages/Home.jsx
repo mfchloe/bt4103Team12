@@ -43,6 +43,40 @@ const Home = () => {
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [profileInitial, setProfileInitial] = useState(null);
   const checkedProfileRef = useRef(false);
+  const CLUSTER_API_URL = `${apiBaseUrl}/cluster/predict`;
+
+  async function fetchClusterForProfile({
+    investorType,
+    customerType,
+    riskLevel,
+    diversificationScore,
+    investmentCapacity,
+  }) {
+    // Map frontend keys -> backend keys
+    const body = {
+      investor_type: investorType,
+      customer_type: customerType,
+      risk_level: riskLevel,
+      capacity: investmentCapacity,
+      diversification: Number(diversificationScore),
+    };
+
+    const res = await fetch(CLUSTER_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Cluster API failed (${res.status})`);
+    }
+    const data = await res.json();
+    if (typeof data?.cluster !== "number") {
+      throw new Error("Cluster API returned an invalid response.");
+    }
+    return data.cluster; // integer ID
+  }
 
   useEffect(() => {
     portfolioRef.current = portfolio;
@@ -250,8 +284,32 @@ const Home = () => {
     [handleAddStock]
   );
 
-    const handleSaveProfile = async (payload) => {
-      const ref = doc(db, "users", currentUser.uid);
+  const handleSaveProfile = async (payload) => {
+    // payload has: investorType, customerType, riskLevel, diversificationScore, investmentCapacity
+    const ref = doc(db, "users", currentUser.uid);
+
+    try {
+      // 1) get cluster id from backend
+      const clusterId = await fetchClusterForProfile(payload);
+
+      // 2) save everything (profile + cluster) in one Firestore write
+      const docData = {
+        ...payload,
+        clusterId, // ← store cluster
+        clusterUpdatedAt: serverTimestamp(),
+        profileCompleted: true,
+        updatedAt: serverTimestamp(),
+        ...(profileInitial ? {} : { createdAt: serverTimestamp() }),
+      };
+
+      await setDoc(ref, docData, { merge: true });
+    } catch (err) {
+      console.warn(
+        "Failed to compute cluster; saving profile without cluster.",
+        err
+      );
+
+      // Fallback: still save the profile so UX isn’t blocked
       const docData = {
         ...payload,
         profileCompleted: true,
@@ -259,7 +317,11 @@ const Home = () => {
         ...(profileInitial ? {} : { createdAt: serverTimestamp() }),
       };
       await setDoc(ref, docData, { merge: true });
-    };
+
+      // Optional: toast the warning to the user
+      // setApiError("Saved profile, but clustering is temporarily unavailable.");
+    }
+  };
 
   return (
     <Box sx={styles.container}>
