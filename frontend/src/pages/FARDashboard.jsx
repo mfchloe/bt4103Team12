@@ -253,7 +253,12 @@ export default function FARDashboard() {
     <Box sx={{ minHeight: "100vh", py: 3 }}>
       <Container maxWidth="xl">
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" fontWeight={700} gutterBottom>
+          <Typography
+            variant="h4"
+            fontWeight={700}
+            gutterBottom
+            color={DARK_BLUE}
+          >
             Historical Investment Behavior Dashboard
           </Typography>
           <Typography variant="body1" color="text.secondary">

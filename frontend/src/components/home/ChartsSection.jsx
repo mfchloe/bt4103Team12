@@ -12,6 +12,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Box, Typography, Paper, Grid } from "@mui/material";
+import { GREEN, RED } from "../../constants/colors";
 
 const COLORS = [
   "#305D9E",
@@ -92,7 +93,7 @@ const ReturnBarChart = ({ data }) => (
       <Tooltip content={<CustomPLTooltip />} />
       <Bar dataKey="return" radius={[0, 8, 8, 0]}>
         {data.map((entry, index) => (
-          <Cell key={index} fill={entry.return >= 0 ? "#16A085" : "#E74C3C"} />
+          <Cell key={index} fill={entry.return >= 0 ? GREEN : RED} />
         ))}
       </Bar>
     </BarChart>

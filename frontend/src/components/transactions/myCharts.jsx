@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Papa from "papaparse";
-import { useAuth } from "../context/AuthContext.jsx";
-import { apiBaseUrl } from "../api/httpClient.js";
+import { useAuth } from "../../context/AuthContext.jsx";
+import { apiBaseUrl } from "../../api/httpClient.js";
 
-import ChartCard from "../components/myCharts/ChartCard.jsx";
-import BuySellDonut from "../components/myCharts/BuySellDonut.jsx";
-import CashflowLine from "../components/myCharts/CashflowLine.jsx";
-import TopSymbolsBar from "../components/myCharts/TopSymbolsBar.jsx";
+import ChartCard from "../myCharts/ChartCard.jsx";
+import BuySellDonut from "../myCharts/BuySellDonut.jsx";
+import CashflowLine from "../myCharts/CashflowLine.jsx";
+import TopSymbolsBar from "../myCharts/TopSymbolsBar.jsx";
+import { GREEN, RED } from "../../constants/colors.js";
 
 const MIN_TX = 5; // threshold: Min transactions to unlock My Charts feature
 
@@ -38,20 +39,25 @@ export default function MyCharts() {
   const [assetErr, setAssetErr] = useState(null);
 
   // toggles
-  const [flowMetric, setFlowMetric] = useState("spend");   // toggle between spend/net
-  const [topMetric,  setTopMetric]  = useState("value");   // toggle between value/shares
+  const [flowMetric, setFlowMetric] = useState("spend"); // toggle between spend/net
+  const [topMetric, setTopMetric] = useState("value"); // toggle between value/shares
 
   // Load FAR transactions
   useEffect(() => {
     let cancelled = false;
     (async () => {
       if (!isFarCustomer || !farCustomerSession?.customerId) {
-        if (!cancelled) { setTx([]); setLoading(false); }
+        if (!cancelled) {
+          setTx([]);
+          setLoading(false);
+        }
         return;
       }
       try {
         setLoading(true);
-        const res = await fetch(`${apiBaseUrl}/api/far/transactions/${farCustomerSession.customerId}`);
+        const res = await fetch(
+          `${apiBaseUrl}/api/far/transactions/${farCustomerSession.customerId}`
+        );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         const items = Array.isArray(json.items) ? json.items : [];
@@ -62,22 +68,29 @@ export default function MyCharts() {
           transactionType: t.transactionType ?? t.buy_sell ?? t.category ?? "",
           marketID: t.marketID ?? t.market ?? t.exchange ?? "UNKNOWN",
           timestamp: t.timestamp ?? t.date ?? t.trade_date ?? "",
-          totalValue: Number(t.totalValue ?? t.total ?? t.amount ?? ((t.price && t.shares) ? t.price * t.shares : 0)),
+          totalValue: Number(
+            t.totalValue ??
+              t.total ??
+              t.amount ??
+              (t.price && t.shares ? t.price * t.shares : 0)
+          ),
           units: Number(t.units ?? t.shares ?? 0),
           ISIN: t.ISIN,
         }));
 
         if (!cancelled) setTx(normalized);
       } catch (e) {
-        if (!cancelled) { 
-          console.error(e); 
-          setTx([]); 
+        if (!cancelled) {
+          console.error(e);
+          setTx([]);
         }
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isFarCustomer, farCustomerSession]);
 
   // Load assets CSV (data for charts)
@@ -89,20 +102,26 @@ export default function MyCharts() {
       complete: (res) => {
         if (cancelled) return;
         const map = new Map(
-          (res.data || []).filter(r => r.ISIN).map(r => [String(r.ISIN).trim(), r])
+          (res.data || [])
+            .filter((r) => r.ISIN)
+            .map((r) => [String(r.ISIN).trim(), r])
         );
         setAssetsMap(map);
       },
-      error: (err) => { if (!cancelled) setAssetErr(err); }
+      error: (err) => {
+        if (!cancelled) setAssetErr(err);
+      },
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Fill rows with asset info
   const rows = useMemo(() => {
     if (!tx.length) return [];
     return tx.map((t) => {
-      const a = t.ISIN ? (assetsMap.get(String(t.ISIN).trim()) || {}) : {};
+      const a = t.ISIN ? assetsMap.get(String(t.ISIN).trim()) || {} : {};
       return {
         ...t,
         assetCategory: a.assetCategory || null,
@@ -114,22 +133,26 @@ export default function MyCharts() {
   }, [tx, assetsMap]);
 
   // UI gates
-  if (!isFarCustomer && isFirebaseUser) return <p style={{ padding: "2rem" }}>You don’t have any past transactions yet.</p>;
-  if (loading) return <p style={{ padding: "2rem" }}>Loading charts...</p>;
-  if (!rows.length) return <p style={{ padding: "2rem" }}>No transactions found for your account.</p>;
-  if (rows.length < MIN_TX) {
+  if (!isFarCustomer && isFirebaseUser)
     return (
-      <div style={{ padding: "2rem" }}>
-        <h1>My Charts</h1>
-        <p>You need at least <b>{MIN_TX}</b> transactions to access the <b>My Charts</b> feature.</p>
-      </div>
+      <p style={{ padding: "2rem" }}>
+        You don’t have any past transactions yet.
+      </p>
     );
-  }
+  if (loading) return <p style={{ padding: "2rem" }}>Loading charts...</p>;
+  if (!rows.length)
+    return (
+      <p style={{ padding: "2rem" }}>No transactions found for your account.</p>
+    );
 
   // Derived datasets
-  const buys  = rows.filter(r => String(r.transactionType).toLowerCase() === "buy");
-  const sells = rows.filter(r => String(r.transactionType).toLowerCase() === "sell");
-  const buyValue  = buys.reduce((s, r) => s + (r.totalValue || 0), 0);
+  const buys = rows.filter(
+    (r) => String(r.transactionType).toLowerCase() === "buy"
+  );
+  const sells = rows.filter(
+    (r) => String(r.transactionType).toLowerCase() === "sell"
+  );
+  const buyValue = buys.reduce((s, r) => s + (r.totalValue || 0), 0);
   const sellValue = sells.reduce((s, r) => s + (r.totalValue || 0), 0);
 
   // Monthly aggregates (guard invalid dates)
@@ -139,7 +162,8 @@ export default function MyCharts() {
     const v = r.totalValue || 0;
     const isBuy = String(r.transactionType).toLowerCase() === "buy";
     const cur = m.get(bucket) || { buy: 0, sell: 0 };
-    if (isBuy) cur.buy += v; else cur.sell += v;
+    if (isBuy) cur.buy += v;
+    else cur.sell += v;
     m.set(bucket, cur);
     return m;
   }, new Map());
@@ -153,34 +177,51 @@ export default function MyCharts() {
     .sort((a, b) => a.month.localeCompare(b.month));
 
   // Top-5 datasets (now one-liners via topN)
-  const topByValue  = topN(buys, "assetShortName", r => r.totalValue);
-  const topByShares = topN(buys, "assetShortName", r => r.units);
+  const topByValue = topN(buys, "assetShortName", (r) => r.totalValue);
+  const topByShares = topN(buys, "assetShortName", (r) => r.units);
 
-  const flowSeries = flowMetric === "net" ? monthlyNetSeries : monthlySpendSeries;
-  const flowTitle  = flowMetric === "net" ? "Net Investment Amount ($)" : "Investment Spending ($)";
-  const flowLabel  = flowMetric === "net" ? "Buy - Sell ($)" : "Buy ($)";
+  const flowSeries =
+    flowMetric === "net" ? monthlyNetSeries : monthlySpendSeries;
+  const flowTitle =
+    flowMetric === "net"
+      ? "Net Investment Amount ($)"
+      : "Investment Spending ($)";
+  const flowLabel = flowMetric === "net" ? "Buy - Sell ($)" : "Buy ($)";
 
-  const topData        = topMetric === "shares" ? topByShares : topByValue;
-  const topAxisLabel   = topMetric === "shares" ? "Number of Shares" : "Amount Spent ($)";
-  const topValueFormat = topMetric === "shares"
-    ? (v) => `${Math.round(v).toLocaleString()}`
-    : (v) => `$${Math.round(v).toLocaleString()}`;
-
+  const topData = topMetric === "shares" ? topByShares : topByValue;
+  const topAxisLabel =
+    topMetric === "shares" ? "Number of Shares" : "Amount Spent ($)";
+  const topValueFormat =
+    topMetric === "shares"
+      ? (v) => `${Math.round(v).toLocaleString()}`
+      : (v) => `$${Math.round(v).toLocaleString()}`;
 
   return (
-    <div style={{ padding: "2rem" }}>
-      <h1>My Charts</h1>
-      {assetErr && <p style={{ color: "#a00" }}>Failed to load Asset metadata.</p>}
+    <div>
+      {assetErr && (
+        <p style={{ color: "#a00" }}>Failed to load Asset metadata.</p>
+      )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 12, marginTop: 12 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
+          gap: 12,
+          marginTop: 12,
+        }}
+      >
         {/* Monthly Investment Spend/Net */}
         <ChartCard title={flowTitle} compact>
           <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
             <button
               onClick={() => setFlowMetric("spend")}
               style={{
-                padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db",
-                background: flowMetric === "spend" ? "#e5e7eb" : "#fff", fontSize: 12, cursor: "pointer",
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: "1px solid #d1d5db",
+                background: flowMetric === "spend" ? "#e5e7eb" : "#fff",
+                fontSize: 12,
+                cursor: "pointer",
               }}
             >
               Spend ($)
@@ -188,8 +229,12 @@ export default function MyCharts() {
             <button
               onClick={() => setFlowMetric("net")}
               style={{
-                padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db",
-                background: flowMetric === "net" ? "#e5e7eb" : "#fff", fontSize: 12, cursor: "pointer",
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: "1px solid #d1d5db",
+                background: flowMetric === "net" ? "#e5e7eb" : "#fff",
+                fontSize: 12,
+                cursor: "pointer",
               }}
             >
               Net ($)
@@ -204,8 +249,12 @@ export default function MyCharts() {
             <button
               onClick={() => setTopMetric("value")}
               style={{
-                padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db",
-                background: topMetric === "value" ? "#e5e7eb" : "#fff", fontSize: 12, cursor: "pointer",
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: "1px solid #d1d5db",
+                background: topMetric === "value" ? "#e5e7eb" : "#fff",
+                fontSize: 12,
+                cursor: "pointer",
               }}
             >
               Value ($)
@@ -213,8 +262,12 @@ export default function MyCharts() {
             <button
               onClick={() => setTopMetric("shares")}
               style={{
-                padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db",
-                background: topMetric === "shares" ? "#e5e7eb" : "#fff", fontSize: 12, cursor: "pointer",
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: "1px solid #d1d5db",
+                background: topMetric === "shares" ? "#e5e7eb" : "#fff",
+                fontSize: 12,
+                cursor: "pointer",
               }}
             >
               Shares
@@ -239,8 +292,8 @@ export default function MyCharts() {
               { label: "Buy", value: Math.round(buyValue) },
               { label: "Sell", value: Math.round(sellValue) },
             ]}
-            barColor="#15803d"
-            altColor="#b91c1c"
+            barColor={GREEN}
+            altColor={RED}
             axisLabel="Total Amount ($)"
           />
         </ChartCard>

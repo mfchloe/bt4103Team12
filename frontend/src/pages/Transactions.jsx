@@ -3,7 +3,7 @@ import { Box, Typography, Paper, TextField } from "@mui/material";
 import TransactionsTable from "../components/home/TransactionsTable";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiBaseUrl } from "../api/httpClient";
-
+import MyCharts from "../components/transactions/myCharts.jsx";
 export default function Transactions() {
   const { isFirebaseUser, isFarCustomer, farCustomerSession } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
@@ -11,7 +11,6 @@ export default function Transactions() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Cold-start user -> No past transactions
     if (!isFarCustomer || !farCustomerSession?.customerId) {
       setAllRows([]);
       return;
@@ -21,50 +20,42 @@ export default function Transactions() {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${apiBaseUrl}/api/far/transactions/${farCustomerSession.customerId}`);
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-
+        const res = await fetch(
+          `${apiBaseUrl}/api/far/transactions/${farCustomerSession.customerId}`
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
-        if (!cancelled) {
-          setAllRows(Array.isArray(json.items) ? json.items : []);
-        }
+        if (!cancelled) setAllRows(Array.isArray(json.items) ? json.items : []);
       } catch (err) {
         console.error("Failed to load transactions", err);
-        if (!cancelled) {
-          setAllRows([]);
-        }
+        if (!cancelled) setAllRows([]);
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isFarCustomer, farCustomerSession]);
 
-
-  // Filter rows on search
   const filteredRows = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return allRows;
 
-    return allRows.filter((r) => {
-      return (
+    return allRows.filter(
+      (r) =>
         (r.stock && r.stock.toLowerCase().includes(query)) ||
         (r.category && r.category.toLowerCase().includes(query)) ||
         (r.buy_sell && r.buy_sell.toLowerCase().includes(query))
-      );
-    });
+    );
   }, [allRows, searchQuery]);
 
-
-  // Render paths
-  const showEmptyState = 
-    (isFirebaseUser && !isFarCustomer) || 
+  const showEmptyState =
+    (isFirebaseUser && !isFarCustomer) ||
     (isFarCustomer && !loading && filteredRows.length === 0);
+
+  const MIN_TX = 5; // same threshold as MyCharts
 
   return (
     <Box sx={{ maxWidth: 1100, mx: "auto", p: 3 }}>
@@ -93,11 +84,14 @@ export default function Transactions() {
               backgroundColor: "#fff",
             },
           }}
-          disabled = {isFirebaseUser && !isFarCustomer}
+          disabled={isFirebaseUser && !isFarCustomer}
         />
       </Box>
 
-      <Paper elevation={0} sx={{ border: "1px solid #eee", borderRadius: 2 }}>
+      <Paper
+        elevation={0}
+        sx={{ border: "1px solid #eee", borderRadius: 2, mb: 4 }}
+      >
         {loading ? (
           <Box sx={{ p: 4, textAlign: "center", color: "text.secondary" }}>
             Loading…
@@ -110,6 +104,9 @@ export default function Transactions() {
           <TransactionsTable rows={filteredRows} />
         )}
       </Paper>
+
+      {/* Render charts if enough transactions */}
+      {filteredRows.length >= MIN_TX && <MyCharts />}
     </Box>
   );
 }
