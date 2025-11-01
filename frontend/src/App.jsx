@@ -9,7 +9,6 @@ import FARDashboard from "./pages/FARDashboard";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login.jsx";
 import Transactions from "./pages/Transactions.jsx";
-import MyCharts from "./pages/myCharts.jsx";
 import Profile from "./pages/Profile.jsx";
 
 const App = () => {
@@ -39,7 +38,6 @@ const App = () => {
           <Route path="/far-dashboard" element={<FARDashboard />} />
           <Route path="*" element={<NotFound />} />
           <Route path="/transactions" element={<Transactions />} />
-          <Route path="/myCharts" element={<MyCharts />} />
           <Route path="/profile" element={<Profile />} />
         </Route>
         <Route path="/login" element={<Login />} />

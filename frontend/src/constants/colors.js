@@ -23,3 +23,5 @@ export const CHART_COLORS = [
 
 export const DARK_BLUE = '#2B4F8C'
 export const LIGHT_BLUE = '#DBE9EE'
+export const GREEN = '#16A085'
+export const RED = '#E74C3C'
