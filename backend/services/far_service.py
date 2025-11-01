@@ -982,3 +982,210 @@ def get_efficient_frontier(filters: dict) -> dict:
 
     points.sort(key=lambda item: item["volatility"])  # left-to-right
     return {"points": points}
+
+# Replace the get_risk_return_matrix function in your far_service.py with this:
+# Replace the get_risk_return_matrix function in your far_service.py with this:
+
+def get_risk_return_matrix(filters: dict, group_by: str = "preferred_asset_category") -> dict:
+    """
+    Calculate risk-return profile using ACTUAL ASSET FEATURES.
+    
+    Returns data with:
+    - label: group name (e.g., "Equity", "Bond")
+    - avg_risk_score: volatility/liquidity-based risk metric (1-3 scale)
+    - avg_return_pct: performance proxy from holding patterns (-10 to +10)
+    - count: number of assets in this group
+    
+    Args:
+        filters: Filter dict to apply
+        group_by: Column to group by (default: "preferred_asset_category")
+    """
+    dfs = load_dataframes()
+    assets_df = dfs.get("assets")
+    
+    if assets_df is None or assets_df.empty:
+        return {"rows": []}
+    
+    # Get filtered transactions to focus on relevant assets
+    tx_filtered = get_filtered_transactions(filters)
+    
+    if tx_filtered.empty or "ISIN" not in tx_filtered.columns:
+        # Fallback: use all assets if no transactions match filters
+        relevant_isins = assets_df["ISIN"].unique() if "ISIN" in assets_df.columns else []
+    else:
+        relevant_isins = tx_filtered["ISIN"].unique()
+    
+    if len(relevant_isins) == 0:
+        return {"rows": []}
+    
+    # Filter assets to only relevant ones
+    assets_filtered = assets_df[assets_df["ISIN"].isin(relevant_isins)].copy()
+    
+    # Determine grouping column - map to asset columns
+    if group_by == "preferred_asset_category":
+        asset_group_col = "assetCategory"
+    elif group_by == "preferred_industry":
+        asset_group_col = "sector"
+    else:
+        asset_group_col = group_by
+    
+    if asset_group_col not in assets_filtered.columns:
+        print(f"Warning: Column '{asset_group_col}' not found in assets dataframe")
+        return {"rows": []}
+    
+    # === CALCULATE RISK SCORE ===
+    # Risk based on: liquidity, investor concentration
+    
+    print(f"Available columns in assets: {assets_filtered.columns.tolist()}")
+    
+    # 1. Liquidity risk (lower liquidity = higher risk)
+    if 'liquidity_profile' in assets_filtered.columns:
+        liquidity_map = {'high': 1.0, 'medium': 2.0, 'low': 3.0}
+        assets_filtered['liquidity_risk'] = assets_filtered['liquidity_profile'].map(liquidity_map).fillna(2.0)
+        print(f"Using liquidity_profile: {assets_filtered['liquidity_profile'].value_counts().to_dict()}")
+    elif 'total_trade_value' in assets_filtered.columns:
+        # Higher trade value = lower risk (more liquid)
+        trade_values = assets_filtered['total_trade_value'].replace(0, np.nan).dropna()
+        if len(trade_values) > 0:
+            q75 = trade_values.quantile(0.75)
+            q25 = trade_values.quantile(0.25)
+            q50 = trade_values.quantile(0.50)
+            print(f"Trade value quartiles: Q25={q25}, Q50={q50}, Q75={q75}")
+            
+            def calc_liquidity_risk(x):
+                if pd.isna(x) or x == 0:
+                    return 2.5
+                elif x >= q75:
+                    return 1.0
+                elif x <= q25:
+                    return 3.0
+                else:
+                    return 2.0
+            
+            assets_filtered['liquidity_risk'] = assets_filtered['total_trade_value'].apply(calc_liquidity_risk)
+        else:
+            assets_filtered['liquidity_risk'] = 2.0
+    else:
+        print("Warning: No liquidity columns found, using default 2.0")
+        assets_filtered['liquidity_risk'] = 2.0
+    
+    # 2. Concentration risk (higher concentration = higher risk)
+    if 'investor_concentration_index' in assets_filtered.columns:
+        # HHI: 0-1 scale, higher = more concentrated = riskier
+        # Scale to 0-2 for risk contribution
+        assets_filtered['concentration_risk'] = (assets_filtered['investor_concentration_index'].fillna(0.5) * 2).clip(0, 2)
+        print(f"Using investor_concentration_index, mean={assets_filtered['investor_concentration_index'].mean()}")
+    elif 'investor_concentration_profile' in assets_filtered.columns:
+        conc_map = {'diverse': 0.5, 'medium': 1.0, 'concentrated': 1.5}
+        assets_filtered['concentration_risk'] = assets_filtered['investor_concentration_profile'].map(conc_map).fillna(1.0)
+        print(f"Using investor_concentration_profile: {assets_filtered['investor_concentration_profile'].value_counts().to_dict()}")
+    else:
+        print("Warning: No concentration columns found, using default 1.0")
+        assets_filtered['concentration_risk'] = 1.0
+    
+    # Combine risk factors (average, scale to 1-3)
+    assets_filtered['risk_score'] = (
+        (assets_filtered['liquidity_risk'] + assets_filtered['concentration_risk']) / 2
+    ).clip(1.0, 3.0)
+    
+    print(f"Risk score stats: min={assets_filtered['risk_score'].min()}, max={assets_filtered['risk_score'].max()}, mean={assets_filtered['risk_score'].mean()}")
+    
+    # === CALCULATE RETURN PROXY ===
+    # Return based on: holding periods, transaction flow, popularity
+    
+    # 1. Holding pattern (longer holds indicate satisfaction/performance)
+    if 'median_holding_days' in assets_filtered.columns:
+        def holding_to_return(days):
+            if pd.isna(days):
+                return 0.0
+            if days < 30:
+                return -5.0  # Short-term speculation
+            elif days > 180:
+                return 5.0   # Long-term conviction
+            else:
+                return ((days - 30) / 30) - 2.5  # Scale 30-180 to -2.5 to +2.5
+        
+        assets_filtered['holding_return'] = assets_filtered['median_holding_days'].apply(holding_to_return)
+        print(f"Holding days stats: min={assets_filtered['median_holding_days'].min()}, max={assets_filtered['median_holding_days'].max()}")
+    else:
+        print("Warning: No median_holding_days column found")
+        assets_filtered['holding_return'] = 0.0
+    
+    # 2. Transaction flow (net buying suggests positive sentiment)
+    if 'transaction_flow_profile' in assets_filtered.columns:
+        flow_map = {'net_buy': 5.0, 'balanced': 0.0, 'net_sell': -5.0}
+        assets_filtered['flow_return'] = assets_filtered['transaction_flow_profile'].map(flow_map).fillna(0.0)
+        print(f"Flow profile: {assets_filtered['transaction_flow_profile'].value_counts().to_dict()}")
+    elif 'buy_value' in assets_filtered.columns and 'sell_value' in assets_filtered.columns:
+        # Calculate net flow as percentage
+        total = assets_filtered['buy_value'] + assets_filtered['sell_value']
+        net = assets_filtered['buy_value'] - assets_filtered['sell_value']
+        assets_filtered['flow_return'] = np.where(
+            total > 0,
+            (net / total) * 10,  # Scale to -10 to +10
+            0.0
+        )
+        print(f"Buy/sell calculated, mean flow_return={assets_filtered['flow_return'].mean()}")
+    else:
+        print("Warning: No transaction flow columns found")
+        assets_filtered['flow_return'] = 0.0
+    
+    # 3. Popularity growth
+    if 'unique_investors' in assets_filtered.columns:
+        median_investors = assets_filtered['unique_investors'].median()
+        if median_investors > 0:
+            assets_filtered['popularity_return'] = (
+                (assets_filtered['unique_investors'] / median_investors - 1) * 10
+            ).clip(-8, 8)
+            print(f"Unique investors: median={median_investors}, mean={assets_filtered['unique_investors'].mean()}")
+        else:
+            assets_filtered['popularity_return'] = 0.0
+    else:
+        print("Warning: No unique_investors column found")
+        assets_filtered['popularity_return'] = 0.0
+    
+    # Combine return proxies (weighted average)
+    assets_filtered['return_proxy'] = (
+        assets_filtered['holding_return'] * 0.35 +
+        assets_filtered['flow_return'] * 0.40 +
+        assets_filtered['popularity_return'] * 0.25
+    ).clip(-15, 15)
+    
+    print(f"Return proxy stats: min={assets_filtered['return_proxy'].min()}, max={assets_filtered['return_proxy'].max()}, mean={assets_filtered['return_proxy'].mean()}")
+    
+    # === GROUP BY CATEGORY ===
+    grouped = assets_filtered.groupby(asset_group_col).agg({
+        'risk_score': 'mean',
+        'return_proxy': 'mean',
+        'ISIN': 'count'  # Count assets per category
+    }).reset_index()
+    
+    grouped.columns = ['label', 'avg_risk_score', 'avg_return_pct', 'count']
+    
+    # Filter out small groups
+    grouped = grouped[grouped['count'] >= 3]  # At least 3 assets per category
+    grouped = grouped.dropna(subset=['avg_risk_score', 'avg_return_pct'])
+    
+    # Ensure reasonable ranges
+    grouped['avg_risk_score'] = grouped['avg_risk_score'].clip(1.0, 3.0)
+    grouped['avg_return_pct'] = grouped['avg_return_pct'].clip(-10, 10)
+    
+    # Convert to list of dicts
+    rows = []
+    for _, row in grouped.iterrows():
+        rows.append({
+            'label': str(row['label']),
+            'category': str(row['label']),
+            'avg_risk_score': float(row['avg_risk_score']),
+            'avg_return_pct': float(row['avg_return_pct']),
+            'count': int(row['count']),
+            'value': int(row['count'])
+        })
+    
+    return {"rows": rows}
+
+
+# Remove these old helper functions if they exist at the bottom of the file:
+# - risk_level_to_score
+# - calculate_risk_score
+# They're not needed for the asset-based approach

@@ -175,7 +175,14 @@ export default function FARDashboard() {
     body
   );
 
-  console.log(diversificationScatter);
+  // Risk-Return Matrix data
+  const { data: riskReturnByCategory } = useApi("/api/far/risk-return-matrix", {
+    ...body,
+    group_by: "preferred_asset_category",
+  });
+
+  console.log("Risk-Return Data:", riskReturnByCategory);
+
   const combinedInvestmentCapacity = useMemo(() => {
     if (!investmentCapacityData?.rows) return [];
 
@@ -343,6 +350,7 @@ export default function FARDashboard() {
                   topAssets={topAssets}
                   setSelectedAsset={setSelectedAsset}
                   efficientFrontier={efficientFrontier}
+                  riskReturnByCategory={riskReturnByCategory}
                 />
               )}
             </Box>

@@ -22,7 +22,7 @@ class FARFilters(BaseModel):
     risk_level: Optional[List[str]] = Field(default=None)
     cluster: Optional[List[int]] = Field(default=None, description="Cluster IDs")
     sectors: Optional[List[str]] = Field(default=None)
-    asset_category: Optional[List[str]] = Field(default=None)  # ADD THIS TOO
+    asset_category: Optional[List[str]] = Field(default=None)
     investment_capacity: Optional[Union[List[str], NumericRange]] = Field(default=None)
     date_range: Optional[DateRange] = Field(default=None)
     search_query: Optional[str] = Field(default=None)
@@ -81,7 +81,6 @@ class CategoryBreakdownRequest(BaseModel):
     include_clusters: bool = Field(default=False, description="Whether to apply cluster filter")
 
 
-
 class CategoryRow(BaseModel):
     label: str
     value: int
@@ -89,6 +88,26 @@ class CategoryRow(BaseModel):
 
 class CategoryBreakdownResponse(BaseModel):
     rows: List[CategoryRow]
+
+
+# NEW: Risk-Return Matrix Request/Response
+class RiskReturnMatrixRequest(BaseModel):
+    filters: FARFilters
+    group_by: str = Field(default="preferred_asset_category", description="Column to group by (e.g., preferred_asset_category, cluster)")
+
+
+class RiskReturnPoint(BaseModel):
+    label: str = Field(description="Category/group label")
+    category: Optional[str] = Field(default=None, description="Alias for label")
+    avg_risk_score: float = Field(description="Average risk score (1-3 scale)")
+    avg_return_pct: float = Field(description="Average return percentage")
+    count: int = Field(description="Number of customers in this group")
+    value: Optional[int] = Field(default=None, description="Alias for count")
+
+
+class RiskReturnMatrixResponse(BaseModel):
+    rows: List[RiskReturnPoint]
+
 
 class EfficientFrontierRequest(BaseModel):
     filters: FARFilters
