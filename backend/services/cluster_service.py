@@ -1,28 +1,55 @@
 import os
 import joblib
 import numpy as np
-
-# Categorical vocabularies (must match training!)
-INVESTOR_TYPES = ["active_trader","moderate_trader","buy_and_hold"]
-CUSTOMER_TYPES = ["mass","premium"]
-RISK_LEVELS   = ["income","conservative","balanced","aggressive"]
-CAPACITY      = ["CAP_LT30K","CAP_30K_80K","CAP_80K_300K","CAP_GT300K"]
+import pandas as pd
 
 class ClusterService:
     def __init__(self, artifacts_dir: str):
-        self.scaler = joblib.load(os.path.join(artifacts_dir, "scaler_for_kmeans_k3_20251031_130702.joblib"))
-        self.kmeans = joblib.load(os.path.join(artifacts_dir, "kmeans_only_k3_20251031_130702.joblib"))
+        self.scaler = joblib.load(os.path.join(artifacts_dir, "scaler_for_kmeans.joblib"))
+        self.kmeans = joblib.load(os.path.join(artifacts_dir, "kmeans_model.joblib"))
+        self.le_dict = joblib.load(os.path.join(artifacts_dir, "label_encoders_for_kmeans.joblib"))
+        self.feature_order = [
+            "riskLevel", "customerType", "investmentCapacity",
+            "avg_transactions_per_month", "days_since_last_buy", "trading_activity_ratio",
+            "investor_type", "avg_buy_transaction_value", "avg_buy_units",
+            "category_diversification", "num_markets_bought", "historical_investment_style",
+            "exploration_score"
+        ]
 
-    def _encode(self, investor_type: str, customer_type: str, risk_level: str, capacity: str, diversification: float) -> np.ndarray:
-        vec = []
-        vec += [1.0 if investor_type == v else 0.0 for v in INVESTOR_TYPES]
-        vec += [1.0 if customer_type == v else 0.0 for v in CUSTOMER_TYPES]
-        vec += [1.0 if risk_level   == v else 0.0 for v in RISK_LEVELS]
-        vec += [1.0 if capacity     == v else 0.0 for v in CAPACITY]
-        vec += [float(diversification)]
-        return np.array(vec, dtype=float).reshape(1, -1)
+    def _prepare_input(self, customer_dict: dict) -> np.ndarray:
+        # Build dataframe
+        df = pd.DataFrame([customer_dict])
+        
+        # Reorder columns
+        df = df[self.feature_order]
 
-    def predict(self, *, investor_type: str, customer_type: str, risk_level: str, capacity: str, diversification: float) -> int:
-        x = self._encode(investor_type, customer_type, risk_level, capacity, diversification)
-        x_scaled = self.scaler.transform(x)
-        return int(self.kmeans.predict(x_scaled)[0])
+        # Encode categorical columns
+        for col, le in self.le_dict.items():
+            df[col] = df[col].map(lambda x: le.transform([x])[0] if x in le.classes_ else -1)
+
+        # Scale
+        X_scaled = self.scaler.transform(df)
+        return X_scaled
+
+    def predict(self, customer_dict: dict) -> int:
+        X_scaled = self._prepare_input(customer_dict)
+        cluster_label = self.kmeans.predict(X_scaled)[0]
+        return int(cluster_label)
+
+
+# example new_custoemr input:
+# new_customer = {
+#     'riskLevel': 'Balanced',
+#     'customerType': 'Mass',
+#     'investmentCapacity': 'CAP_30K_80K',
+#     'investor_type': 'active_trader',
+#     'historical_investment_style': 'balanced',
+#     'avg_transactions_per_month': 0.0,
+#     'days_since_last_buy': 999.0,
+#     'trading_activity_ratio': 0.0,
+#     'avg_buy_transaction_value': 12000,
+#     'avg_buy_units': 0.0,
+#     'category_diversification': 0.8,
+#     'num_markets_bought': 3,
+#     'exploration_score': 0.75,
+# }

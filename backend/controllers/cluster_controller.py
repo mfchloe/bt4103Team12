@@ -4,7 +4,6 @@ from services.cluster_service import ClusterService
 
 router = APIRouter(prefix="/cluster", tags=["cluster"])
 
-# will be set in main.py
 _service: ClusterService | None = None
 
 def get_service() -> ClusterService:
@@ -14,11 +13,7 @@ def get_service() -> ClusterService:
 
 @router.post("/predict", response_model=ClusterResponse)
 def predict(req: ClusterRequest, svc: ClusterService = Depends(get_service)):
-    cluster = svc.predict(
-        investor_type=req.investor_type,
-        customer_type=req.customer_type,
-        risk_level=req.risk_level,
-        capacity=req.capacity,
-        diversification=req.diversification,
-    )
+    # convert Pydantic model to dict
+    customer_dict = req.dict()
+    cluster = svc.predict(customer_dict)
     return ClusterResponse(cluster=cluster)
