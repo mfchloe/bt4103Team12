@@ -144,3 +144,8 @@ def risk_return_matrix(req: RiskReturnMatrixRequest):
             req.group_by
         )
     )
+
+# NEW: Affinity Matrix Endpoint
+@router.post("/affinity-matrix")
+def affinity_matrix(req: AffinityMatrixRequest):
+    return _clean(far_service.get_affinity_matrix(req.filters.model_dump(exclude_none=True), req.attributes, req.asset_column))

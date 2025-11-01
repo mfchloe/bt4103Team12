@@ -983,9 +983,6 @@ def get_efficient_frontier(filters: dict) -> dict:
     points.sort(key=lambda item: item["volatility"])  # left-to-right
     return {"points": points}
 
-# Replace the get_risk_return_matrix function in your far_service.py with this:
-# Replace the get_risk_return_matrix function in your far_service.py with this:
-
 def get_risk_return_matrix(filters: dict, group_by: str = "preferred_asset_category") -> dict:
     """
     Calculate risk-return profile using ACTUAL ASSET FEATURES.
@@ -1021,13 +1018,17 @@ def get_risk_return_matrix(filters: dict, group_by: str = "preferred_asset_categ
     # Filter assets to only relevant ones
     assets_filtered = assets_df[assets_df["ISIN"].isin(relevant_isins)].copy()
     
-    # Determine grouping column - map to asset columns
-    if group_by == "preferred_asset_category":
-        asset_group_col = "assetCategory"
-    elif group_by == "preferred_industry":
-        asset_group_col = "sector"
-    else:
-        asset_group_col = group_by
+    # # Determine grouping column - map to asset columns
+    # if group_by == "preferred_asset_category":
+    #     asset_group_col = "assetCategory"
+    # elif group_by == "preferred_industry":
+    #     asset_group_col = "sector"
+    # elif group_by == "preferred_subcategory":
+    #     asset_group_col = "assetSubCategory"
+    # else:
+    #     asset_group_col = group_by
+    asset_group_col = group_by
+
     
     if asset_group_col not in assets_filtered.columns:
         print(f"Warning: Column '{asset_group_col}' not found in assets dataframe")
@@ -1184,8 +1185,41 @@ def get_risk_return_matrix(filters: dict, group_by: str = "preferred_asset_categ
     
     return {"rows": rows}
 
-
-# Remove these old helper functions if they exist at the bottom of the file:
-# - risk_level_to_score
-# - calculate_risk_score
-# They're not needed for the asset-based approach
+def get_affinity_matrix(filters: dict, attributes: list, asset_column: str) -> dict:
+    dfs = load_dataframes()
+    cust = dfs.get("customers")
+    
+    if cust is None or cust.empty:
+        return {"matrix": {}}
+    
+    cust_f = _apply_filters(cust, filters)
+    
+    if cust_f.empty:
+        return {"matrix": {}}
+    
+    # Default attributes if not specified
+    if not attributes:
+        attributes = ["riskLevel", "investmentCapacity", "customerType"]
+    
+    matrix = {}
+    
+    for attr in attributes:
+        if attr not in cust_f.columns or asset_column not in cust_f.columns:
+            continue
+        
+        # Remove null values
+        valid_data = cust_f[[attr, asset_column]].dropna()
+        
+        if valid_data.empty:
+            continue
+        
+        # Cross-tab count
+        ct = pd.crosstab(valid_data[attr], valid_data[asset_column])
+        
+        # Normalize to get percentages per row (each row sums to 1)
+        ct_norm = ct.div(ct.sum(axis=1), axis=0).fillna(0)
+        
+        # Convert to nested dict format
+        matrix[attr] = ct_norm.to_dict('index')
+    
+    return {"matrix": matrix}

@@ -1,4 +1,13 @@
-import { Card, CardContent, Typography, Box } from "@mui/material";
+import {
+  Card,
+  CardContent,
+  Typography,
+  Box,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+} from "@mui/material";
 import {
   ScatterChart,
   Scatter,
@@ -12,6 +21,7 @@ import {
   Cell,
 } from "recharts";
 import { CHART_COLORS } from "../../constants/colors";
+
 const formatNumber = (num, decimals = 2) => {
   if (num === null || num === undefined || isNaN(num)) return "-";
   return Number(num.toFixed(decimals)).toLocaleString();
@@ -23,6 +33,7 @@ const HeatmapCard = ({
   xAxis = "avg_risk_score",
   yAxis = "avg_return_pct",
   tooltip: tooltipText,
+  dropdown, // optional { value, onChange, options, label }
 }) => {
   const chartData = data
     .map((item) => ({
@@ -54,7 +65,6 @@ const HeatmapCard = ({
     );
   }
 
-  // Compute domains dynamically
   const riskValues = chartData.map((d) => d.risk);
   const returnValues = chartData.map((d) => d.return);
   const countValues = chartData.map((d) => d.count);
@@ -69,30 +79,63 @@ const HeatmapCard = ({
   ];
   const countDomain = [Math.min(...countValues), Math.max(...countValues)];
 
-  // Midlines for quadrant separation
   const midRisk = (riskDomain[0] + riskDomain[1]) / 2;
   const midReturn = (returnDomain[0] + returnDomain[1]) / 2;
 
   return (
     <Card sx={{ height: "100%" }}>
       <CardContent>
-        <Box sx={{ mb: 2 }}>
-          <Typography fontSize={16} fontWeight={600} gutterBottom>
+        <Box sx={{ mb: 2, display: "flex", flexDirection: "column", gap: 1 }}>
+          <Typography fontSize={15} fontWeight={600} gutterBottom>
             {title}
           </Typography>
           {tooltipText && (
-            <Typography fontSize={12} color="text.secondary">
+            <Typography fontSize={11} color="text.secondary">
               {tooltipText}
             </Typography>
+          )}
+
+          {/* Smaller dropdown */}
+          {dropdown && (
+            <FormControl
+              sx={{
+                maxWidth: 200,
+                "& .MuiInputBase-root": {
+                  height: 32,
+                  fontSize: 12,
+                  padding: "0 8px",
+                },
+              }}
+            >
+              <InputLabel sx={{ fontSize: 12 }}>
+                {dropdown.label || "Select"}
+              </InputLabel>
+              <Select
+                value={dropdown.value}
+                label={dropdown.label || "Select"}
+                onChange={(e) => dropdown.onChange(e.target.value)}
+                size="small"
+                sx={{ fontSize: 12 }}
+              >
+                {dropdown.options.map((opt) => (
+                  <MenuItem
+                    key={opt.value}
+                    value={opt.value}
+                    sx={{ fontSize: 12 }}
+                  >
+                    {opt.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           )}
         </Box>
 
         <ResponsiveContainer width="100%" height={400}>
           <ScatterChart margin={{ top: 20, right: 30, bottom: 60, left: 60 }}>
-            {/* Grid */}
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
 
-            {/* Quadrant shading */}
+            {/* Quadrants */}
             <ReferenceArea
               x1={riskDomain[0]}
               x2={midRisk}
@@ -126,7 +169,6 @@ const HeatmapCard = ({
               fillOpacity={0.08}
             />
 
-            {/* Axes */}
             <XAxis
               type="number"
               dataKey="risk"
@@ -136,9 +178,9 @@ const HeatmapCard = ({
                 value: "Average Risk Score",
                 position: "bottom",
                 offset: 40,
-                style: { fontSize: 14, fill: "#6b7280" },
+                style: { fontSize: 13, fill: "#6b7280" },
               }}
-              tick={{ fontSize: 12, fill: "#6b7280" }}
+              tick={{ fontSize: 11, fill: "#6b7280" }}
               tickFormatter={(value) => formatNumber(value, 2)}
             />
             <YAxis
@@ -151,9 +193,9 @@ const HeatmapCard = ({
                 angle: -90,
                 position: "left",
                 offset: 40,
-                style: { fontSize: 14, fill: "#6b7280" },
+                style: { fontSize: 13, fill: "#6b7280" },
               }}
-              tick={{ fontSize: 12, fill: "#6b7280" }}
+              tick={{ fontSize: 11, fill: "#6b7280" }}
               tickFormatter={(value) => formatNumber(value, 2)}
             />
             <ZAxis
@@ -163,7 +205,6 @@ const HeatmapCard = ({
               domain={countDomain}
             />
 
-            {/* Tooltip */}
             <Tooltip
               content={({ active, payload }) => {
                 if (active && payload?.length) {
@@ -171,20 +212,22 @@ const HeatmapCard = ({
                   return (
                     <Box
                       sx={{
-                        p: 1.5,
+                        p: 1,
                         background: "white",
                         borderRadius: 1,
                         boxShadow: 2,
                       }}
                     >
-                      <Typography fontWeight={600}>{d.category}</Typography>
-                      <Typography variant="body2">
+                      <Typography fontWeight={600} fontSize={12}>
+                        {d.category}
+                      </Typography>
+                      <Typography fontSize={11}>
                         Risk: {formatNumber(d.risk)}
                       </Typography>
-                      <Typography variant="body2">
+                      <Typography fontSize={11}>
                         Return: {formatNumber(d.return)}%
                       </Typography>
-                      <Typography variant="body2">
+                      <Typography fontSize={11}>
                         Count: {formatNumber(d.count, 0)}
                       </Typography>
                     </Box>
@@ -194,7 +237,6 @@ const HeatmapCard = ({
               }}
             />
 
-            {/* Bubbles */}
             <Scatter name="Asset Categories" data={chartData}>
               {chartData.map((entry, i) => (
                 <Cell
@@ -207,7 +249,6 @@ const HeatmapCard = ({
           </ScatterChart>
         </ResponsiveContainer>
 
-        {/* Quadrant legend */}
         <Box
           sx={{
             mt: 2,
@@ -229,14 +270,7 @@ const HeatmapCard = ({
 
 const LegendItem = ({ color, text }) => (
   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-    <Box
-      sx={{
-        width: 12,
-        height: 12,
-        borderRadius: "50%",
-        bgcolor: color,
-      }}
-    />
+    <Box sx={{ width: 12, height: 12, borderRadius: "50%", bgcolor: color }} />
     <Typography variant="caption" color="text.secondary">
       {text}
     </Typography>

@@ -126,6 +126,12 @@ class EfficientFrontierResponse(BaseModel):
     points: List[EfficientFrontierPoint]
 
 
+class AffinityMatrixRequest(BaseModel):
+    filters: FARFilters
+    attributes: Optional[List[str]] = None  # e.g., ["risk_level", "investment_capacity"]
+    asset_column: str = "preferred_asset_category"
+
+
 # responses
 class MetricsResponse(BaseModel):
     customers: int = 0
