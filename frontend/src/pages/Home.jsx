@@ -341,14 +341,6 @@ const Home = () => {
             >
               My Transactions
             </Button>
-
-            <Button
-              onClick={() => navigate("/myCharts")}
-              sx={styles.txButtonTop}
-              variant="contained"
-            >
-              My Charts
-            </Button>
           </Box>
         </Box>
 
