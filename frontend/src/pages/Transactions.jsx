@@ -86,7 +86,7 @@ export default function Transactions() {
           }}
           disabled={isFirebaseUser && !isFarCustomer}
         />
-      </Box>
+      </Box>      
 
       <Paper
         elevation={0}
