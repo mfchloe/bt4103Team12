@@ -262,7 +262,6 @@ class DatasetTimeSeriesService:
             return []
 
         series: List[Dict[str, Any]] = []
-        forward_days = 5
         for isin in normalized_isins:
             asset_rows = filtered.loc[filtered["ISIN"] == isin]
             if asset_rows.empty:
@@ -282,12 +281,9 @@ class DatasetTimeSeriesService:
 
             predicted_sharpe = None
             try:
-                close_values = asset_rows["closePrice"].astype(float)
-                returns = close_values.pct_change().dropna()
-                if len(returns) >= 10:
-                    forecast = forecast_sharpe_ratio(returns.to_numpy(), forward_days)
-                    if math.isfinite(forecast):
-                        predicted_sharpe = float(forecast)
+                forecast = forecast_sharpe_ratio(isin)
+                if math.isfinite(forecast):
+                    predicted_sharpe = float(forecast)
             except Exception as error:  # pragma: no cover - defensive safety
                 logger.warning("Sharpe forecast failed for %s: %s", isin, error)
                 predicted_sharpe = None

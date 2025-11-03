@@ -305,6 +305,11 @@ const TimeSeries = () => {
     const summaries = {};
     const annualizationFactor = Math.sqrt(252);
     const halfPi = Math.PI / 2;
+    const normalizeSharpe = (value) => {
+      if (!Number.isFinite(value)) return 0;
+      const normalized = Math.atan(value) / halfPi;
+      return Number.isFinite(normalized) ? normalized : 0;
+    };
 
     chartData.forEach((series) => {
       const { prices = [], symbol, isin, predictedSharpe } = series || {};
@@ -333,7 +338,13 @@ const TimeSeries = () => {
           : 0;
 
       let scaledScore = 0;
-      if (returns.length > 1) {
+      const forecastSharpe = Number.isFinite(predictedSharpe)
+        ? predictedSharpe
+        : null;
+
+      if (forecastSharpe !== null) {
+        scaledScore = normalizeSharpe(forecastSharpe);
+      } else if (returns.length > 1) {
         const mean =
           returns.reduce((acc, value) => acc + value, 0) / returns.length;
         const variance =
@@ -347,29 +358,13 @@ const TimeSeries = () => {
         const stdDev = Math.sqrt(Math.max(variance, 0));
 
         if (stdDev > 0) {
-          const rawSharpe = (mean / stdDev) * annualizationFactor;
-          const normalized = Math.atan(rawSharpe) / halfPi;
-          scaledScore = Number.isFinite(normalized) ? normalized : 0;
-        } else {
-          if (overallReturn > 0) scaledScore = 1;
-          else if (overallReturn < 0) scaledScore = -1;
-          else scaledScore = 0;
+          const historicalSharpe = (mean / stdDev) * annualizationFactor;
+          scaledScore = normalizeSharpe(historicalSharpe);
+        } else if (overallReturn !== 0) {
+          scaledScore = overallReturn > 0 ? 1 : -1;
         }
-      } else {
-        if (overallReturn > 0) scaledScore = 1;
-        else if (overallReturn < 0) scaledScore = -1;
-        else scaledScore = 0;
-      }
-
-      const forecastSharpe = Number.isFinite(predictedSharpe)
-        ? predictedSharpe
-        : null;
-
-      if (forecastSharpe !== null) {
-        const normalizedForecast = Math.atan(forecastSharpe) / halfPi;
-        if (Number.isFinite(normalizedForecast)) {
-          scaledScore = normalizedForecast;
-        }
+      } else if (overallReturn !== 0) {
+        scaledScore = overallReturn > 0 ? 1 : -1;
       }
 
       const clamped = Math.max(-1, Math.min(1, scaledScore));
@@ -698,18 +693,6 @@ const TimeSeries = () => {
           >
             {scoreValue.toFixed(2)}
           </Typography>
-          {rawSharpe !== null && (
-            <Typography
-              sx={{
-                mt: 1,
-                fontSize: 12,
-                color: "#475569",
-                fontWeight: 500,
-              }}
-            >
-              Raw Sharpe: {rawSharpe.toFixed(2)}
-            </Typography>
-          )}
         </Box>
       </Paper>
     );
