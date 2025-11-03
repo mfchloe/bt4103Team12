@@ -1,9 +1,10 @@
 import { useEffect, useState, useMemo } from "react";
-import { Box, Typography, Paper, TextField } from "@mui/material";
+import { Box, Typography, Paper } from "@mui/material";
 import TransactionsTable from "../components/home/TransactionsTable";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiBaseUrl } from "../api/httpClient";
 import MyCharts from "../components/transactions/myCharts.jsx";
+import SearchBar from "../components/SearchBar.jsx";
 export default function Transactions() {
   const { isFirebaseUser, isFarCustomer, farCustomerSession } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
@@ -59,35 +60,25 @@ export default function Transactions() {
 
   return (
     <Box sx={{ maxWidth: 1100, mx: "auto", p: 3 }}>
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          mb: 3,
-        }}
+      {/* Page Title */}
+      <Typography
+        variant="h4"
+        sx={{ fontWeight: 700, color: "#305D9E", mb: 4 }}
       >
-        <Typography variant="h4" sx={{ fontWeight: 700, color: "#305D9E" }}>
-          My Transactions
-        </Typography>
+        My Transactions
+      </Typography>
 
-        <TextField
-          variant="outlined"
-          placeholder="Search"
-          size="small"
+      {/* Search bar */}
+      <Box sx={{ mb: 2 }}>
+        <SearchBar
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          sx={{
-            width: 320,
-            "& .MuiOutlinedInput-root": {
-              borderRadius: "12px",
-              backgroundColor: "#fff",
-            },
-          }}
+          placeholder="Search transactions"
           disabled={isFirebaseUser && !isFarCustomer}
         />
-      </Box>      
+      </Box>
 
+      {/* Transactions table */}
       <Paper
         elevation={0}
         sx={{ border: "1px solid #eee", borderRadius: 2, mb: 4 }}
@@ -101,7 +92,7 @@ export default function Transactions() {
             You don't have any transactions yet.
           </Box>
         ) : (
-          <TransactionsTable rows={filteredRows} />
+          <TransactionsTable rows={filteredRows} searchQuery={searchQuery} />
         )}
       </Paper>
 

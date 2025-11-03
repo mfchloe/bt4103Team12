@@ -11,7 +11,6 @@ import {
 import PortfolioTable from "../components/home/PortfolioTable";
 import RecommendationsDialog from "../components/home/RecommendationsDialog";
 import AddStockDialog from "../components/home/AddStockDialog";
-import PortfolioChart from "../components/home/PortfolioChart";
 import StatsSection from "../components/home/StatsSection";
 import UserProfileDialog from "../components/home/UserProfileDialog.jsx";
 import ChartsSection from "../components/home/ChartsSection.jsx";
@@ -327,21 +326,20 @@ const Home = () => {
     <Box sx={styles.container}>
       <Box sx={{ maxWidth: 1200, mx: "auto" }}>
         {/* Header Row */}
-        <Box sx={styles.topBar}>
-          <Typography variant="h4" sx={styles.header}>
-            My Portfolio
-          </Typography>
 
-          {/* Button group on the top-right */}
-          <Box sx={styles.txButtonsGroup}>
-            <Button
-              onClick={() => navigate("/transactions")}
-              sx={styles.txButtonTop}
-              variant="contained"
-            >
-              My Transactions
-            </Button>
-          </Box>
+        <Typography variant="h4" sx={styles.header}>
+          My Portfolio Playground
+        </Typography>
+
+        {/* MY transactions group */}
+        <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 4 }}>
+          <Button
+            onClick={() => navigate("/transactions")}
+            sx={styles.txButtonTop}
+            variant="contained"
+          >
+            My Transactions
+          </Button>
         </Box>
 
         {apiError && (
@@ -430,7 +428,6 @@ const styles = {
   header: {
     fontWeight: "bold",
     color: "#305D9E",
-    mb: 4,
   },
   buttonsContainer: {
     display: "flex",
@@ -476,6 +473,7 @@ const styles = {
     display: "flex",
     gap: 2,
     ml: "auto",
+    mb: 4,
   },
   txButtonTop: {
     bgcolor: "#305D9E",

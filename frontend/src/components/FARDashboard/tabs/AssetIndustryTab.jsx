@@ -26,23 +26,6 @@ export default function AssetIndustryTab({
 }) {
   return (
     <Stack spacing={3}>
-      {/* Group-By Dropdown */}
-      <Box sx={{ maxWidth: 250 }}>
-        <FormControl fullWidth>
-          <InputLabel>Group By</InputLabel>
-          <Select
-            value={groupBy}
-            label="Group By"
-            onChange={(e) => onChangeGroupBy(e.target.value)}
-          >
-            <MenuItem value="assetCategory">Asset Category</MenuItem>
-            <MenuItem value="assetSubCategory">Asset Subcategory</MenuItem>
-            <MenuItem value="sector">Sector</MenuItem>
-            <MenuItem value="industry">Industry</MenuItem>
-          </Select>
-        </FormControl>
-      </Box>
-
       {/* Category + Subcategory charts side by side */}
       <Box
         sx={{

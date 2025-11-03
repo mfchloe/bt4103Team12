@@ -93,9 +93,7 @@ const TimeSeries = () => {
   const [seriesError, setSeriesError] = useState(null);
 
   const hasValidDate =
-    startDate &&
-    startDate.isValid() &&
-    !startDate.isAfter(MAX_AVAILABLE_DATE);
+    startDate && startDate.isValid() && !startDate.isAfter(MAX_AVAILABLE_DATE);
 
   useEffect(() => {
     if (!startDate || !startDate.isValid()) {
@@ -105,7 +103,10 @@ const TimeSeries = () => {
       return;
     }
     const maxDateString = MAX_AVAILABLE_DATE.format("YYYY-MM-DD");
-    if (startDate.isAfter(MAX_AVAILABLE_DATE) && startDateRaw !== maxDateString) {
+    if (
+      startDate.isAfter(MAX_AVAILABLE_DATE) &&
+      startDateRaw !== maxDateString
+    ) {
       setStartDateRaw(maxDateString);
     }
   }, [
@@ -267,8 +268,7 @@ const TimeSeries = () => {
         }
         if (!color) {
           const available = CHART_COLORS.find((c) => !used.has(c));
-          color =
-            available ?? CHART_COLORS[index % CHART_COLORS.length];
+          color = available ?? CHART_COLORS[index % CHART_COLORS.length];
           changed = true;
           used.add(color);
           return { ...stock, color };
@@ -333,7 +333,9 @@ const TimeSeries = () => {
       const startPrice = Number(sorted[0].price);
       const endPrice = Number(sorted[sorted.length - 1].price);
       const overallReturn =
-        Number.isFinite(startPrice) && startPrice > 0 && Number.isFinite(endPrice)
+        Number.isFinite(startPrice) &&
+        startPrice > 0 &&
+        Number.isFinite(endPrice)
           ? endPrice / startPrice - 1
           : 0;
 
@@ -487,7 +489,6 @@ const TimeSeries = () => {
     lastRequestSignature,
   ]);
 
-
   // ---------- sub-components ----------
   const SelectedStocksList = () => {
     return (
@@ -613,8 +614,17 @@ const TimeSeries = () => {
         }}
       >
         <Box sx={{ display: "flex", alignItems: "flex-start", p: 2, gap: 1 }}>
-          <Box sx={{ width: 8, height: 28, borderRadius: 2, bgcolor: stripe }} />
-          <Box sx={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1 }}>
+          <Box
+            sx={{ width: 8, height: 28, borderRadius: 2, bgcolor: stripe }}
+          />
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              minWidth: 0,
+              flex: 1,
+            }}
+          >
             <Typography
               sx={{
                 fontWeight: 800,
@@ -736,8 +746,7 @@ const TimeSeries = () => {
                 typeof option.name === "string" && option.name.trim()
                   ? option.name.trim()
                   : "";
-              const namePart =
-                name && name !== symbol ? ` - ${name}` : "";
+              const namePart = name && name !== symbol ? ` - ${name}` : "";
               const isinPart = option.isin ? ` (${option.isin})` : "";
               return `${symbol}${namePart}${isinPart}`.trim();
             }}
@@ -820,8 +829,7 @@ const TimeSeries = () => {
             >
               {selectedStocks.map((stock) => {
                 const identifier = getAssetKey(stock) || stock.symbol;
-                const data =
-                  sharpeSummaries[identifier] ||
+                const data = sharpeSummaries[identifier] ||
                   sharpeSummaries[stock.symbol] || {
                     summary_label: "Neutral",
                     direction: "flat",
@@ -871,14 +879,14 @@ const styles = {
     borderRadius: 3,
     mb: 4,
     border: "1px solid #e5e7eb",
-    bgcolor: "#f5f6fa",
+    bgcolor: "white",
   },
   chartCard: {
     p: 3,
     borderRadius: 3,
     border: "1px solid #e5e7eb",
     minHeight: 420,
-    bgcolor: "#f5f6fa",
+    bgcolor: "white",
   },
   placeholderBox: {
     height: 400,
@@ -890,6 +898,3 @@ const styles = {
     bgcolor: "#f9fafb",
   },
 };
-
-
-
