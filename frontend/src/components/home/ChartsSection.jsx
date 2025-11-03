@@ -33,7 +33,7 @@ const CustomPLTooltip = ({ active, payload }) => {
   if (!data || data.pl === undefined) return null;
 
   return (
-    <Paper sx={{ p: 1.5, borderRadius: 2 }}>
+    <Paper sx={styles.tooltipPaper}>
       <Typography fontWeight={600}>{data.name}</Typography>
       <Typography color={data.pl >= 0 ? "success.main" : "error.main"}>
         P&L: ${Number(data.pl).toFixed(2)}
@@ -56,15 +56,8 @@ const PortfolioPieChart = ({ data }) => {
   const totalValue = chartData.reduce((sum, entry) => sum + entry.value, 0);
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: { xs: "column", md: "row" },
-        gap: 3,
-        alignItems: { xs: "stretch", md: "center" },
-      }}
-    >
-      <Box sx={{ flex: "1 1 280px", minWidth: 260, height: 280 }}>
+    <Box sx={styles.pieWrapper}>
+      <Box sx={styles.pieBox}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
@@ -82,65 +75,33 @@ const PortfolioPieChart = ({ data }) => {
               ))}
             </Pie>
             <Tooltip
-              formatter={(value, name) => {
+              formatter={(value) => {
                 const percent = totalValue
                   ? ((value / totalValue) * 100).toFixed(1)
                   : "0.0";
-                return [`${formatCurrency(value)} (${percent}%)`, name];
+                return [`${formatCurrency(value)} (${percent}%)`];
               }}
             />
           </PieChart>
         </ResponsiveContainer>
       </Box>
-      <Box
-        sx={{
-          flex: "1 1 220px",
-          minWidth: { xs: "100%", md: 220 },
-          maxHeight: 280,
-          overflowY: "auto",
-          bgcolor: "#f9fafb",
-          borderRadius: 2,
-          border: "1px solid #e5e7eb",
-          p: 2,
-        }}
-      >
+
+      <Box sx={styles.legendBox}>
         {chartData.map((entry, index) => (
           <Box
             key={entry.name}
             sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 2,
+              ...styles.legendItem,
               mb: index === chartData.length - 1 ? 0 : 1.5,
             }}
           >
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-              <Box
-                sx={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: "50%",
-                  bgcolor: entry.color,
-                  flexShrink: 0,
-                }}
-              />
-              <Typography
-                sx={{ fontWeight: 600, color: "#111827", fontSize: 11 }}
-              >
-                {entry.name}
-              </Typography>
+            <Box sx={styles.legendItemTextBox}>
+              <Box sx={{ ...styles.legendDot, bgcolor: entry.color }} />
+              <Typography sx={styles.legendLabel}>{entry.name}</Typography>
             </Box>
-            <Typography
-              sx={{
-                color: "#4b5563",
-                textAlign: "right",
-                whiteSpace: "nowrap",
-                fontSize: 10.5,
-              }}
-            >
+            {/* <Typography sx={styles.legendValue}>
               {entry.percentage}% | {formatCurrency(entry.value)}
-            </Typography>
+            </Typography> */}
           </Box>
         ))}
       </Box>
@@ -182,7 +143,6 @@ const ReturnBarChart = ({ data }) => (
 
 // ---------- Main Section ----------
 const ChartsSection = ({ portfolio }) => {
-  // Allocation
   const allocationData = portfolio.map((s) => ({
     name: s.symbol,
     value: s.shares * s.currentPrice,
@@ -193,7 +153,6 @@ const ChartsSection = ({ portfolio }) => {
     (i) => (i.percentage = ((i.value / totalValue) * 100).toFixed(1))
   );
 
-  // P&L
   const plData = portfolio
     .map((s) => ({
       name: s.symbol,
@@ -204,7 +163,6 @@ const ChartsSection = ({ portfolio }) => {
     }))
     .sort((a, b) => b.pl - a.pl);
 
-  // Return %
   const returnData = portfolio
     .map((s) => ({
       name: s.symbol,
@@ -215,29 +173,23 @@ const ChartsSection = ({ portfolio }) => {
     .sort((a, b) => b.return - a.return);
 
   return (
-    <Box sx={{ p: 3, mb: 6 }}>
-      {/* Side by Side: Pie + P&L */}
+    <Box sx={styles.container}>
       <Grid container spacing={4} justifyContent="center">
         <Grid item xs={{ xs: 12, md: 6 }} sx={{ minWidth: 400 }}>
-          <Typography fontSize={16} fontWeight={600} mb={2}>
-            Portfolio Allocation
-          </Typography>
+          <Typography sx={styles.sectionTitle}>Portfolio Allocation</Typography>
           <PortfolioPieChart data={allocationData} />
         </Grid>
 
         <Grid item xs={{ xs: 12, md: 6 }} sx={{ minWidth: 400 }}>
-          <Typography ontSize={16} fontWeight={600} mb={2}>
+          <Typography sx={styles.sectionTitle}>
             Profit & Loss by Stock
           </Typography>
           <PLBarChart data={plData} />
         </Grid>
       </Grid>
 
-      {/* Full width: Returns */}
       <Box mt={4}>
-        <Typography ontSize={16} fontWeight={600} mb={2}>
-          Returns by Stock (%)
-        </Typography>
+        <Typography sx={styles.sectionTitle}>Returns by Stock (%)</Typography>
         <ReturnBarChart data={returnData} />
       </Box>
     </Box>
@@ -245,3 +197,40 @@ const ChartsSection = ({ portfolio }) => {
 };
 
 export default ChartsSection;
+
+// ---------- Styles ----------
+const styles = {
+  container: { p: 3, mb: 6 },
+  sectionTitle: { fontSize: 16, fontWeight: 600, mb: 2 },
+  pieWrapper: {
+    display: "flex",
+    flexDirection: { xs: "column", md: "row" },
+    gap: 3,
+    alignItems: { xs: "stretch", md: "center" },
+  },
+  pieBox: { flex: "1 1 280px", minWidth: 260, height: 280 },
+  legendBox: {
+    flex: "1 1 220px",
+    minWidth: { xs: "100%" },
+    maxHeight: 280,
+    overflowY: "auto",
+    borderRadius: 2,
+    p: 2,
+  },
+  legendItem: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    mb: 1.5,
+  },
+  legendItemTextBox: { display: "flex", alignItems: "center", gap: 1.5 },
+  legendDot: { width: 10, height: 10, borderRadius: "50%", flexShrink: 0 },
+  legendLabel: { fontWeight: 600, color: "#111827", fontSize: 11 },
+  legendValue: {
+    color: "#4b5563",
+    textAlign: "right",
+    whiteSpace: "nowrap",
+    fontSize: 10.5,
+  },
+  tooltipPaper: { p: 1.5, borderRadius: 2 },
+};
