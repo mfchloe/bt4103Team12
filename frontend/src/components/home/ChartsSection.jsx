@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { Box, Typography, Paper, Grid } from "@mui/material";
 import { GREEN, RED } from "../../constants/colors";
+import { formatCurrency } from "../../utils/mathHelpers";
 
 const COLORS = [
   "#305D9E",
@@ -45,28 +46,107 @@ const CustomPLTooltip = ({ active, payload }) => {
 };
 
 // ---------- Charts ----------
-const PortfolioPieChart = ({ data }) => (
-  <ResponsiveContainer width="100%" height={300}>
-    <PieChart>
-      <Pie
-        data={data}
-        cx="50%"
-        cy="50%"
-        labelLine={false}
-        label={(entry) => `${entry.name} (${entry.percentage}%)`}
-        outerRadius={90}
-        innerRadius={50}
-        dataKey="value"
-        fontSize={10}
+const PortfolioPieChart = ({ data }) => {
+  const chartData = data
+    .filter((entry) => entry.value > 0)
+    .map((entry, index) => ({
+      ...entry,
+      color: COLORS[index % COLORS.length],
+    }));
+  const totalValue = chartData.reduce((sum, entry) => sum + entry.value, 0);
+
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: { xs: "column", md: "row" },
+        gap: 3,
+        alignItems: { xs: "stretch", md: "center" },
+      }}
+    >
+      <Box sx={{ flex: "1 1 280px", minWidth: 260, height: 280 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={chartData}
+              cx="50%"
+              cy="50%"
+              labelLine={false}
+              outerRadius={90}
+              innerRadius={50}
+              dataKey="value"
+              fontSize={12}
+            >
+              {chartData.map((entry, index) => (
+                <Cell key={index} fill={entry.color} />
+              ))}
+            </Pie>
+            <Tooltip
+              formatter={(value, name) => {
+                const percent = totalValue
+                  ? ((value / totalValue) * 100).toFixed(1)
+                  : "0.0";
+                return [`${formatCurrency(value)} (${percent}%)`, name];
+              }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </Box>
+      <Box
+        sx={{
+          flex: "1 1 220px",
+          minWidth: { xs: "100%", md: 220 },
+          maxHeight: 280,
+          overflowY: "auto",
+          bgcolor: "#f9fafb",
+          borderRadius: 2,
+          border: "1px solid #e5e7eb",
+          p: 2,
+        }}
       >
-        {data.map((entry, index) => (
-          <Cell key={index} fill={COLORS[index % COLORS.length]} />
+        {chartData.map((entry, index) => (
+          <Box
+            key={entry.name}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 2,
+              mb: index === chartData.length - 1 ? 0 : 1.5,
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+              <Box
+                sx={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  bgcolor: entry.color,
+                  flexShrink: 0,
+                }}
+              />
+              <Typography
+                sx={{ fontWeight: 600, color: "#111827", fontSize: 11 }}
+              >
+                {entry.name}
+              </Typography>
+            </Box>
+            <Typography
+              sx={{
+                color: "#4b5563",
+                textAlign: "right",
+                whiteSpace: "nowrap",
+                fontSize: 10.5,
+              }}
+            >
+              {entry.percentage}% | {formatCurrency(entry.value)}
+            </Typography>
+          </Box>
         ))}
-      </Pie>
-      <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
-    </PieChart>
-  </ResponsiveContainer>
-);
+      </Box>
+    </Box>
+  );
+};
 
 const PLBarChart = ({ data }) => (
   <ResponsiveContainer width="100%" height={300}>

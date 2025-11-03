@@ -19,6 +19,7 @@ interface DonutChartProps {
   height?: number;
   onSelect?: (label: string) => void;
   selected?: string[];
+  showLegend?: boolean;
 }
 
 export const DonutChart = ({
@@ -30,6 +31,7 @@ export const DonutChart = ({
   height = 280,
   onSelect,
   selected = [],
+  showLegend = true,
 }: DonutChartProps) => {
   const total = (data || []).reduce((acc, d) => acc + d.value, 0);
   const chartData = (data || []).map((d, idx) => ({
@@ -102,22 +104,24 @@ export const DonutChart = ({
                 })}
               </Pie>
               <Tooltip content={<CustomTooltip />} />
-              <Legend
-                verticalAlign="bottom"
-                layout="vertical"
-                align="center"
-                iconType="circle"
-                wrapperStyle={{
-                  fontSize: 12,
-                  lineHeight: "16px",
-                  marginTop: 12,
-                  maxHeight: 80,
-                  overflowY: "auto",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "normal",
-                  wordBreak: "break-word",
-                }}
-              />
+              {showLegend && (
+                <Legend
+                  verticalAlign="bottom"
+                  layout="vertical"
+                  align="center"
+                  iconType="circle"
+                  wrapperStyle={{
+                    fontSize: 12,
+                    lineHeight: "16px",
+                    marginTop: 12,
+                    maxHeight: 80,
+                    overflowY: "auto",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "normal",
+                    wordBreak: "break-word",
+                  }}
+                />
+              )}
             </PieChart>
           </ResponsiveContainer>
         </Box>

@@ -20,7 +20,7 @@
     "firebase": "^12.4.0",
     "install": "^0.13.0",
     "lucide-react": "^0.544.0",
-    "npm": "^11.6.1",
+    "npm": "^11.6.0",
     "papaparse": "^5.5.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
