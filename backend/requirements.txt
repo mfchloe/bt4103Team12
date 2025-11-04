@@ -19,3 +19,4 @@ google-auth
 httpx
 PyJWT[crypto]
 pmdarima
+cvxpy
