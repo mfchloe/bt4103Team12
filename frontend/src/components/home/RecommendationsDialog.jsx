@@ -16,10 +16,8 @@ import {
 import { Add, TrendingUp } from "@mui/icons-material";
 import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
-import { useAuth } from "../../context/AuthContext.jsx";
 
 const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
-  const { authFetch } = useAuth();
   const [toast, setToast] = useState({
     open: false,
     message: "",
@@ -27,49 +25,62 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
     severity: "success",
   });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
 
+  // Dummy recommendations
   useEffect(() => {
     if (!open) return;
 
-    let cancelled = false;
-    const fetchRecommendations = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await authFetch(
-          "/api/dataset/timeseries/recommendations?limit=6"
-        );
+    setLoading(true);
 
-        if (!data?.success) {
-          throw new Error(
-            data?.detail || data?.message || "Failed to load recommendations."
-          );
-        }
+    const dummyData = [
+      {
+        symbol: "AAPL",
+        name: "Apple Inc.",
+        latestPrice: 175.25,
+        totalValue: 120000000,
+        totalUnits: 685000,
+        isin: "US0378331005",
+      },
+      {
+        symbol: "GOOGL",
+        name: "Alphabet Inc.",
+        latestPrice: 135.1,
+        totalValue: 95000000,
+        totalUnits: 703000,
+        isin: "US02079K3059",
+      },
+      {
+        symbol: "AMZN",
+        name: "Amazon.com Inc.",
+        latestPrice: 3250.5,
+        totalValue: 140000000,
+        totalUnits: 43000,
+        isin: "US0231351067",
+      },
+      {
+        symbol: "TSLA",
+        name: "Tesla Inc.",
+        latestPrice: 880.3,
+        totalValue: 70000000,
+        totalUnits: 80000,
+        isin: "US88160R1014",
+      },
+      {
+        symbol: "MSFT",
+        name: "Microsoft Corp.",
+        latestPrice: 310.4,
+        totalValue: 110000000,
+        totalUnits: 350000,
+        isin: "US5949181045",
+      },
+    ];
 
-        if (!cancelled) {
-          setRecommendations(Array.isArray(data.items) ? data.items : []);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          console.error("Failed to fetch recommendations:", err);
-          setRecommendations([]);
-          setError(err.message || "Unable to fetch recommendations.");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchRecommendations();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, authFetch]);
+    setTimeout(() => {
+      setRecommendations(dummyData);
+      setLoading(false);
+    }, 500); // simulate loading delay
+  }, [open]);
 
   const filteredRecommendations = useMemo(() => {
     const presentSymbols = new Set(
@@ -128,9 +139,7 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
         onClose={onClose}
         maxWidth="md"
         fullWidth
-        PaperProps={{
-          sx: { maxHeight: "80vh" },
-        }}
+        PaperProps={{ sx: { maxHeight: "80vh" } }}
       >
         <DialogTitle sx={{ pb: 1 }}>
           <Typography variant="h4" component="div">
@@ -147,10 +156,6 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
               <Box sx={{ py: 5, display: "flex", justifyContent: "center" }}>
                 <CircularProgress size={28} />
               </Box>
-            ) : error ? (
-              <Typography color="error" align="center" sx={{ py: 4 }}>
-                {error}
-              </Typography>
             ) : filteredRecommendations.length === 0 ? (
               <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
                 All recommended stocks are already in your portfolio!
@@ -162,9 +167,7 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
                   variant="outlined"
                   sx={{
                     transition: "background-color 0.2s",
-                    "&:hover": {
-                      bgcolor: "action.hover",
-                    },
+                    "&:hover": { bgcolor: "action.hover" },
                   }}
                 >
                   <CardContent>
@@ -184,11 +187,7 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
                             mb: 2,
                           }}
                         >
-                          <Typography
-                            variant="h6"
-                            component="h3"
-                            fontWeight="bold"
-                          >
+                          <Typography variant="h6" fontWeight="bold">
                             {stock.symbol}
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
