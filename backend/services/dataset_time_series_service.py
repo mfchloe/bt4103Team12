@@ -4,9 +4,9 @@ from datetime import date
 from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional
+from models.forecast_sharpe_ratio import forecast_sharpe_ratio
 
 import pandas as pd
-from models.arima import forecast_sharpe_ratio
 
 logger = logging.getLogger(__name__)
 
