@@ -6,7 +6,6 @@ from threading import Lock
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
-from models.arima import forecast_sharpe_ratio
 
 logger = logging.getLogger(__name__)
 
