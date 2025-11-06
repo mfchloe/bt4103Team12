@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -8,19 +8,30 @@ from pmdarima import auto_arima
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 # import matplotlib.pyplot as plt
 
-def _predict_returns(time_series: np.ndarray, forward_days: int) -> np.ndarray:
+
+DEFAULT_CONFIDENCE = 0.95
+
+
+def _smooth_series(values: np.ndarray) -> np.ndarray:
+    """Apply double exponential smoothing to stabilise forecasts."""
+    series = pd.Series(values)
+    first_smooth = series.ewm(span=5, adjust=False).mean()
+    second_smooth = first_smooth.ewm(span=5, adjust=False).mean()
+    return second_smooth.to_numpy()
+
+
+def _predict_returns_with_confidence(
+    time_series: np.ndarray,
+    forward_days: int,
+    confidence: float = DEFAULT_CONFIDENCE,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Generate return forecasts using the original ARIMA-based logic.
-
-    Args:
-        time_series: 1-D array of historical returns (or return proxies).
-        forward_days: Number of days to project forward.
-
-    Returns:
-        Array containing the forecasted returns for the next ``forward_days`` steps.
+    Forecast returns together with lower/upper confidence bounds.
     """
     if forward_days <= 0:
         raise ValueError("forward_days must be a positive integer.")
+    if not (0.0 < confidence < 1.0):
+        raise ValueError("confidence must lie between 0 and 1.")
 
     series = pd.Series(np.asarray(time_series, dtype=float)).dropna()
     if series.empty:
@@ -41,13 +52,85 @@ def _predict_returns(time_series: np.ndarray, forward_days: int) -> np.ndarray:
     )
 
     forecast_horizon = max(forward_days, 5)
-    raw_forecast = np.asarray(model.predict(n_periods=forecast_horizon), dtype=float)
+    alpha = 1.0 - float(confidence)
+    mean_forecast, conf_int = model.predict(
+        n_periods=forecast_horizon,
+        return_conf_int=True,
+        alpha=alpha,
+    )
 
-    forecast_series = pd.Series(raw_forecast)
-    first_smooth = forecast_series.ewm(span=5, adjust=False).mean()
-    smoothed_forecast = first_smooth.ewm(span=5, adjust=False).mean().to_numpy()
+    mean_forecast = np.asarray(mean_forecast, dtype=float)
+    conf_int = np.asarray(conf_int, dtype=float)
+    if conf_int.shape != (forecast_horizon, 2):
+        raise RuntimeError("Unexpected confidence interval shape from predictor.")
 
-    return smoothed_forecast[:forward_days]
+    smoothed_mean = _smooth_series(mean_forecast)[:forward_days]
+    smoothed_lower = _smooth_series(conf_int[:, 0])[:forward_days]
+    smoothed_upper = _smooth_series(conf_int[:, 1])[:forward_days]
+
+    lower = np.minimum(smoothed_lower, smoothed_upper)
+    upper = np.maximum(smoothed_lower, smoothed_upper)
+    lower = np.minimum(lower, smoothed_mean)
+    upper = np.maximum(upper, smoothed_mean)
+
+    return smoothed_mean, lower, upper
+
+
+def _predict_returns(time_series: np.ndarray, forward_days: int) -> np.ndarray:
+    """
+    Generate return forecasts using the ARIMA-based logic.
+    """
+    mean_returns, _, _ = _predict_returns_with_confidence(
+        time_series,
+        forward_days,
+        confidence=DEFAULT_CONFIDENCE,
+    )
+    return mean_returns
+
+
+def _accumulate_price_paths(
+    last_price: float,
+    mean_returns: Sequence[float],
+    lower_returns: Sequence[float],
+    upper_returns: Sequence[float],
+) -> Tuple[Sequence[float], Sequence[float], Sequence[float]]:
+    """
+    Transform return forecasts into price paths for mean/lower/upper bounds.
+    """
+    running_mean = float(last_price)
+    running_lower = float(last_price)
+    running_upper = float(last_price)
+
+    mean_prices = []
+    lower_prices = []
+    upper_prices = []
+
+    for mean_ret, lower_ret, upper_ret in zip(mean_returns, lower_returns, upper_returns):
+        step_mean = 1.0 + float(mean_ret)
+        step_lower = 1.0 + float(lower_ret)
+        step_upper = 1.0 + float(upper_ret)
+
+        if step_lower <= 0:
+            step_lower = 1e-6
+        if step_upper <= 0:
+            step_upper = 1e-6
+
+        running_mean *= step_mean
+        running_lower *= step_lower
+        running_upper *= step_upper
+
+        running_mean = float(np.clip(running_mean, a_min=0.0, a_max=None))
+        running_lower = float(np.clip(running_lower, a_min=0.0, a_max=None))
+        running_upper = float(np.clip(running_upper, a_min=0.0, a_max=None))
+
+        lower_bound = min(running_mean, running_lower, running_upper)
+        upper_bound = max(running_mean, running_lower, running_upper)
+
+        mean_prices.append(running_mean)
+        lower_prices.append(lower_bound)
+        upper_prices.append(upper_bound)
+
+    return mean_prices, lower_prices, upper_prices
 
 
 def _forecast_sharpe_from_returns(time_series: np.ndarray, forward_days: int) -> float:
@@ -76,6 +159,7 @@ def generate_price_predictions(
     time_series: pd.DataFrame,
     forward_days: int = 5,
     output_path: Optional[str] = None,
+    confidence: float = DEFAULT_CONFIDENCE,
 ) -> pd.DataFrame:
     """
     Forecast future prices for every ISIN and store the results in ``predictions.csv``.
@@ -83,18 +167,22 @@ def generate_price_predictions(
     The function applies the ARIMA forecasting logic to the return series of assets
     that trade up to the latest available global date. For assets that do not reach
     the global end date, the function falls back to a constant forecast equal to the
-    final observed price so that all assets share the same forecast horizon.
+    final observed price so that all assets share the same forecast horizon. In
+    addition to the mean price forecast, 95% confidence interval bounds are produced.
 
     Args:
         time_series: DataFrame containing columns ``ISIN``, ``timestamp`` and ``closePrice``.
         forward_days: Number of business days to forecast. Defaults to 5.
         output_path: Optional override for the output CSV path.
+        confidence: Confidence level used for the prediction intervals.
 
     Returns:
         DataFrame of the generated forecasts, ordered by ISIN and timestamp.
     """
     if forward_days <= 0:
         raise ValueError("forward_days must be a positive integer.")
+    if not (0.0 < confidence < 1.0):
+        raise ValueError("confidence must lie between 0 and 1.")
 
     required_columns = {"ISIN", "timestamp", "closePrice"}
     if not required_columns.issubset(time_series.columns):
@@ -124,8 +212,7 @@ def generate_price_predictions(
         raise ValueError("Unable to determine the latest timestamp from time_series.")
 
     business_day = pd.offsets.BDay()
-    future_dates = pd.bdate_range(global_latest + business_day, periods=forward_days)
-    future_dates = list(future_dates)
+    future_dates = list(pd.bdate_range(global_latest + business_day, periods=forward_days))
     records = []
 
     for isin, group in df.groupby("ISIN"):
@@ -138,36 +225,50 @@ def generate_price_predictions(
         last_price = float(prices.iloc[-1])
         last_timestamp = pd.Timestamp(group["timestamp"].iloc[-1])
 
-        predictions = [last_price] * forward_days
+        mean_prices = [last_price] * forward_days
+        lower_prices = [last_price] * forward_days
+        upper_prices = [last_price] * forward_days
 
-        if (
+        should_forecast = (
             last_timestamp.normalize() == pd.Timestamp(global_latest).normalize()
             and not returns.empty
-        ):
-            try:
-                predicted_returns = _predict_returns(returns.to_numpy(), forward_days)
-                running_price = last_price
-                predicted_prices = []
-                for ret in predicted_returns:
-                    running_price *= 1.0 + float(ret)
-                    if not np.isfinite(running_price):
-                        raise ValueError("Encountered non-finite predicted price.")
-                    predicted_prices.append(float(running_price))
-                if predicted_prices:
-                    predictions = predicted_prices
-            except Exception:
-                predictions = [last_price] * forward_days
+        )
 
-        for ts, value in zip(future_dates, predictions):
+        if should_forecast:
+            try:
+                mean_returns, lower_returns, upper_returns = _predict_returns_with_confidence(
+                    returns.to_numpy(),
+                    forward_days,
+                    confidence=confidence,
+                )
+                mean_prices, lower_prices, upper_prices = _accumulate_price_paths(
+                    last_price,
+                    mean_returns,
+                    lower_returns,
+                    upper_returns,
+                )
+            except Exception:
+                mean_prices = [last_price] * forward_days
+                lower_prices = [last_price] * forward_days
+                upper_prices = [last_price] * forward_days
+
+        for ts, mean_val, lower_val, upper_val in zip(
+            future_dates, mean_prices, lower_prices, upper_prices
+        ):
             records.append(
                 {
                     "ISIN": isin,
                     "timestamp": pd.Timestamp(ts).date().isoformat(),
-                    "closePrice": float(value),
+                    "closePrice": float(mean_val),
+                    "lower_95": float(lower_val),
+                    "upper_95": float(upper_val),
                 }
             )
 
-    predictions_df = pd.DataFrame(records, columns=["ISIN", "timestamp", "closePrice"])
+    predictions_df = pd.DataFrame(
+        records,
+        columns=["ISIN", "timestamp", "closePrice", "lower_95", "upper_95"],
+    )
     predictions_df = predictions_df.sort_values(["ISIN", "timestamp"]).reset_index(drop=True)
     predictions_df.to_csv(output_path, index=False)
     return predictions_df

@@ -11,16 +11,14 @@ const StatsSection = ({ totalValue, totalPL, totalReturn, sharpeRatio }) => {
           title="Total Portfolio Value"
           value={formatCurrency(totalValue)}
           icon={DollarSign}
-          trend={totalReturn}
         />
       </Grid>
 
       <Grid item xs={12} md={3} sx={styles.cardGrid}>
         <StatCard
-          title="Today's P&L"
+          title="Profit and Loss"
           value={formatCurrency(totalPL)}
           icon={TrendingUp}
-          trend={totalPL >= 0 ? 2.1 : -2.1}
         />
       </Grid>
 
@@ -29,7 +27,6 @@ const StatsSection = ({ totalValue, totalPL, totalReturn, sharpeRatio }) => {
           title="Total Return"
           value={formatPercentage(totalReturn, totalReturn >= 0)}
           icon={BarChart3}
-          trend={totalReturn}
         />
       </Grid>
 
@@ -38,7 +35,6 @@ const StatsSection = ({ totalValue, totalPL, totalReturn, sharpeRatio }) => {
           title="Sharpe Ratio"
           value={sharpeRatio.toFixed(2)}
           icon={Activity}
-          trend={sharpeRatio >= 0 ? 1 : -1}
         />
       </Grid>
     </Grid>

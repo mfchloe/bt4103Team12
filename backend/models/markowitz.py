@@ -255,8 +255,60 @@ def optimize_portfolio_weights(
     return normalised.tolist()
 
 
+def calculate_return_and_risk(
+    isins: Sequence[str],
+    weights: Sequence[float],
+    *,
+    predictions_path: Optional[Path | str] = None,
+    covariance_path: Optional[Path | str] = None,
+) -> tuple[float, float]:
+    """
+    Compute portfolio expected return and risk for a given allocation.
+
+    Parameters
+    ----------
+    isins:
+        Sequence of ISIN codes that matches the weight ordering.
+    weights:
+        Portfolio weights aligned with ``isins``.
+    predictions_path:
+        Optional override for ``predictions.csv``.
+    covariance_path:
+        Optional override for ``covariance.csv``.
+
+    Returns
+    -------
+    (expected_return, risk)
+        Expected daily return and standard deviation implied by the inputs.
+    """
+    clean_isins = _validate_isins(isins)
+    weight_array = np.asarray(weights, dtype=float).reshape(-1)
+
+    if weight_array.size != len(clean_isins):
+        raise ValueError("weights length must match the number of ISINs.")
+    if not np.all(np.isfinite(weight_array)):
+        raise ValueError("weights must be finite numbers.")
+
+    predictions_file = _resolve_path("predictions.csv", predictions_path)
+    covariance_file = _resolve_path("covariance.csv", covariance_path)
+
+    expected_returns = _load_expected_returns(clean_isins, predictions_file)
+    covariance = _load_covariance_matrix(clean_isins, covariance_file)
+
+    returns_vector = expected_returns.to_numpy(dtype=float)
+    covariance_matrix = covariance.to_numpy(dtype=float)
+    covariance_matrix = 0.5 * (covariance_matrix + covariance_matrix.T)
+
+    expected_return = float(returns_vector @ weight_array)
+    variance = float(weight_array @ covariance_matrix @ weight_array)
+    risk = float(np.sqrt(max(variance, 0.0)))
+
+    return expected_return, risk
+
+
 __all__ = [
     "optimize_portfolio_weights",
+    "calculate_return_and_risk",
     "MarkowitzOptimisationError",
 ]
 
@@ -331,6 +383,16 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
 
     for isin, weight in zip(args.isins, weights):
         print(f"{isin}: {weight:.6f}")
+
+    expected_return, risk = calculate_return_and_risk(
+        args.isins,
+        weights,
+        predictions_path=args.predictions,
+        covariance_path=args.covariance,
+    )
+
+    print(f"Expected daily return: {expected_return:.6f}")
+    print(f"Expected daily risk: {risk:.6f}")
 
 
 if __name__ == "__main__":  # pragma: no cover
