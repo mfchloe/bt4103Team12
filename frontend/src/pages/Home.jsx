@@ -218,13 +218,9 @@ const Home = () => {
     setPortfolio((prev) => [...prev, newStock]);
   }, []);
 
-  const handleRemoveStock = useCallback(
-    async (id) => {
-      await authFetch(`/api/portfolio/${id}`, { method: "DELETE" });
-      setPortfolio((prev) => prev.filter((stock) => stock.id !== id));
-    },
-    [authFetch]
-  );
+  const handleRemoveStock = useCallback((id) => {
+    setPortfolio((prev) => prev.filter((stock) => stock.id !== id));
+  }, []);
 
   useEffect(() => {
     // Only run once per mount after auth is ready
