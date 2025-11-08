@@ -6,7 +6,7 @@ import { apiBaseUrl } from "../../api/httpClient.js";
 import ChartCard from "../myCharts/ChartCard.jsx";
 import BuySellDonut from "../myCharts/BuySellDonut.jsx";
 import CashflowLine from "../myCharts/CashflowLine.jsx";
-import TopSymbolsBar from "../myCharts/TopSymbolsBar.jsx";
+import TopStocksBar from "../myCharts/TopStocksBar.jsx";
 import { GREEN, RED } from "../../constants/colors.js";
 
 const MIN_TX = 5; // threshold: Min transactions to unlock My Charts feature
@@ -30,6 +30,15 @@ function topN(rows, labelKey, valueFn, n = 5) {
     .sort((a, b) => b.value - a.value)
     .slice(0, n);
 }
+
+function toCumulativeSeries(series) {
+  let running = 0;
+  return series.map((d) => {
+    running += d.value || 0;
+    return { ...d, value: running };
+  });
+}
+
 
 export default function MyCharts() {
   const { isFirebaseUser, isFarCustomer, farCustomerSession } = useAuth();
@@ -176,17 +185,30 @@ export default function MyCharts() {
     .map(([month, { buy, sell }]) => ({ month, value: buy - sell }))
     .sort((a, b) => a.month.localeCompare(b.month));
 
+  const cumulativeNetSeries = toCumulativeSeries(monthlyNetSeries);
+
   // Top-5 datasets (now one-liners via topN)
   const topByValue = topN(buys, "assetShortName", (r) => r.totalValue);
   const topByShares = topN(buys, "assetShortName", (r) => r.units);
 
-  const flowSeries =
-    flowMetric === "net" ? monthlyNetSeries : monthlySpendSeries;
-  const flowTitle =
-    flowMetric === "net"
-      ? "Net Investment Amount ($)"
-      : "Investment Spending ($)";
-  const flowLabel = flowMetric === "net" ? "Buy - Sell ($)" : "Buy ($)";
+  let flowSeries;
+  let flowTitle;
+  let flowLabel;
+
+  if (flowMetric === "net") {
+    flowSeries = monthlyNetSeries;
+    flowTitle = "Net Investment Amount ($)";
+    flowLabel = "Buy - Sell ($)"
+  } else if (flowMetric === "cumNet") {
+    flowSeries = cumulativeNetSeries;
+    flowTitle = "Cumulative Net Investment ($)";
+    flowLabel = "Buy - Sell ($)"
+  } else {
+    // "spend"
+    flowSeries = monthlySpendSeries;
+    flowTitle = "Investment Spending ($)";
+    flowLabel = "Buy ($)";
+  }
 
   const topData = topMetric === "shares" ? topByShares : topByValue;
   const topAxisLabel =
@@ -239,6 +261,19 @@ export default function MyCharts() {
             >
               Net ($)
             </button>
+            <button
+              onClick={() => setFlowMetric("cumNet")}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: "1px solid #d1d5db",
+                background: flowMetric === "cumNet" ? "#e5e7eb" : "#fff",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              Cumulative Net ($)
+            </button>
           </div>
           <CashflowLine series={flowSeries} label={flowLabel} />
         </ChartCard>
@@ -274,7 +309,7 @@ export default function MyCharts() {
             </button>
           </div>
 
-          <TopSymbolsBar
+          <TopStocksBar
             data={topData}
             axisLabel={topAxisLabel}
             valueFormatter={topValueFormat}
@@ -287,7 +322,7 @@ export default function MyCharts() {
         </ChartCard>
 
         <ChartCard title="Buy vs Sell Amount ($)" compact>
-          <TopSymbolsBar
+          <TopStocksBar
             data={[
               { label: "Buy", value: Math.round(buyValue) },
               { label: "Sell", value: Math.round(sellValue) },
