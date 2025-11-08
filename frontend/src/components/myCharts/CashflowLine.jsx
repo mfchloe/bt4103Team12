@@ -5,7 +5,6 @@ import {
 } from "recharts";
 
 export default function CashflowLine({ series, label = "value" }) {
-  // expects: series = [{ month: 'YYYY-MM', value: number }]
   const data = (series || []).map(d => ({ date: `${d.month}-01`, value: d.value }));
   if (!data.length) return <p>No data.</p>;
 

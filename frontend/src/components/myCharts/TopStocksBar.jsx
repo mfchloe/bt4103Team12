@@ -1,6 +1,6 @@
 import React from "react";
 
-export default function TopSymbolsBar({
+export default function TopStocksBar({
   data,
   barColor = "#305D9E",
   altColor = null,
