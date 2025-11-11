@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import {
   Box,
@@ -51,6 +50,8 @@ const StockRow = ({ stock, onRemove }) => {
   const canRemove = !stock.isSynthetic;
   const lastSeenPrice = stock.lastSeenPrice ?? stock.buyPrice;
   const lastSeenDate = stock.lastSeenDate ?? stock.buyDate;
+  const isAuto = stock.isSynthetic;
+  const dotColor = isAuto ? "#2563eb" : "#16a34a";
 
   return (
     <TableRow
@@ -60,18 +61,16 @@ const StockRow = ({ stock, onRemove }) => {
       }}
     >
       <TableCell sx={styles.symbolCell}>
-        {stock.isNew && (
-          <span
-            style={{
-              display: "inline-block",
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              backgroundColor: "#16a34a",
-              marginRight: 6,
-            }}
-          />
-        )}
+        <span
+          style={{
+            display: "inline-block",
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            backgroundColor: dotColor,
+            marginRight: 6,
+          }}
+        />
         <Tooltip title={stock.name || stock.symbol} arrow disableInteractive>
           <span>{stock.symbol}</span>
         </Tooltip>
@@ -97,7 +96,9 @@ const StockRow = ({ stock, onRemove }) => {
             <Trash2 size={18} />
           </IconButton>
         ) : (
-          <Typography sx={styles.syntheticBadge}>Auto</Typography>
+          <IconButton disabled sx={styles.disabledDeleteButton}>
+            <Trash2 size={18} />
+          </IconButton>
         )}
       </TableCell>
     </TableRow>
@@ -158,9 +159,17 @@ const styles = {
     color: NEGATIVE_COLOR,
     "&:hover": { bgcolor: "#fee2e2" },
   },
+  disabledDeleteButton: {
+    color: "#9ca3af",
+    opacity: 0.5,
+    cursor: "not-allowed",
+  },
   syntheticBadge: {
-    color: "#6b7280",
-    fontSize: "12px",
+    color: "#1d4ed8",
+    fontSize: "11px",
     fontWeight: 600,
+    borderRadius: 9999,
+    padding: "2px 8px",
+    backgroundColor: "#e0ecff"
   },
 };
