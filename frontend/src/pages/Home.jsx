@@ -25,7 +25,6 @@ import { apiBaseUrl } from "../api/httpClient.js";
 import dayjs from "dayjs";
 import { db } from "../../firebase.jsx";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { useApi } from "../hooks/useApi.js";
 const STOCK_PRICE_API_URL = `${apiBaseUrl}/api/dataset/timeseries/batch`;
 
 const Home = () => {
@@ -61,7 +60,7 @@ const Home = () => {
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const [recommendationsError, setRecommendationsError] = useState(null);
 
-  const CLUSTER_API_URL = `${apiBaseUrl}/cluster/predict`;
+  const [clusterId, setClusterId] = useState(null);
 
   const handleFetchRecommendations = async () => {
     if (!isAuthenticated) return;
@@ -73,9 +72,17 @@ const Home = () => {
       ? currentUser.uid
       : farCustomerSession?.customerId;
 
+    // For FAR customers, we rely on model/dataset; for Firebase-only, use local clusterId
+    const cluster_id =
+      !isFarCustomer && typeof clusterId === "number" ? clusterId : null;
+
     // Check cache
     const cached = recommendationsCache.get(userId);
-    if (cached && cached.portfolioKey === portfolioKey) {
+    if (
+      cached &&
+      cached.portfolioKey === portfolioKey &&
+      cached.clusterId === cluster_id
+    ) {
       console.log("Using cached recommendations");
       setRecommendations(cached.recommendations);
       setShowRecommendations(true);
@@ -94,6 +101,7 @@ const Home = () => {
           body: JSON.stringify({
             customer_id: userId,
             existing_portfolio: existingPortfolio,
+            cluster_id,
           }),
         }
       );
@@ -108,6 +116,7 @@ const Home = () => {
       // save to cache
       recommendationsCache.set(userId, {
         portfolioKey,
+        clusterId: cluster_id,
         recommendations: data.recommendations || [],
       });
 
@@ -120,39 +129,6 @@ const Home = () => {
       setRecommendationsLoading(false);
     }
   };
-
-  async function fetchClusterForProfile({
-    investorType,
-    customerType,
-    riskLevel,
-    diversificationScore,
-    investmentCapacity,
-  }) {
-    // Map frontend keys -> backend keys
-    const body = {
-      investor_type: investorType,
-      customer_type: customerType,
-      risk_level: riskLevel,
-      capacity: investmentCapacity,
-      diversification: Number(diversificationScore),
-    };
-
-    const res = await fetch(CLUSTER_API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text || `Cluster API failed (${res.status})`);
-    }
-    const data = await res.json();
-    if (typeof data?.cluster !== "number") {
-      throw new Error("Cluster API returned an invalid response.");
-    }
-    return data.cluster; // integer ID
-  }
 
   useEffect(() => {
     portfolioRef.current = portfolio;
@@ -335,6 +311,10 @@ const Home = () => {
             investmentCapacity: data.investmentCapacity || "",
           });
 
+          if (typeof data.clusterId === "number") {
+            setClusterId(data.clusterId);
+          }
+
           if (!hasAll || data.profileCompleted === false) {
             setShowProfileDialog(true);
           }
@@ -430,6 +410,7 @@ const Home = () => {
       };
 
       await setDoc(ref, docData, { merge: true });
+      setClusterId(clusterId);
     } catch (err) {
       console.warn(
         "Failed to compute cluster; saving profile without cluster.",
