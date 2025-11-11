@@ -1,0 +1,1 @@
+{"embedding_dim": 32, "hidden_dim": 32, "num_assets": 803, "num_customers": 29091, "output_size": 802, "padding_idx": 0, "window_size": 3}

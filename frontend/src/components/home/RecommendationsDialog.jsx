@@ -14,79 +14,30 @@ import {
   CircularProgress,
 } from "@mui/material";
 import { Add, TrendingUp } from "@mui/icons-material";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import dayjs from "dayjs";
 
-const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
+const RecommendationsDialog = ({
+  open,
+  onClose,
+  onAdd,
+  currentPortfolio,
+  recommendations,
+  loading,
+  error,
+}) => {
   const [toast, setToast] = useState({
     open: false,
     message: "",
     symbol: "",
     severity: "success",
   });
-  const [loading, setLoading] = useState(false);
-  const [recommendations, setRecommendations] = useState([]);
-
-  // Dummy recommendations
-  useEffect(() => {
-    if (!open) return;
-
-    setLoading(true);
-
-    const dummyData = [
-      {
-        symbol: "AAPL",
-        name: "Apple Inc.",
-        latestPrice: 175.25,
-        totalValue: 120000000,
-        totalUnits: 685000,
-        isin: "US0378331005",
-      },
-      {
-        symbol: "GOOGL",
-        name: "Alphabet Inc.",
-        latestPrice: 135.1,
-        totalValue: 95000000,
-        totalUnits: 703000,
-        isin: "US02079K3059",
-      },
-      {
-        symbol: "AMZN",
-        name: "Amazon.com Inc.",
-        latestPrice: 3250.5,
-        totalValue: 140000000,
-        totalUnits: 43000,
-        isin: "US0231351067",
-      },
-      {
-        symbol: "TSLA",
-        name: "Tesla Inc.",
-        latestPrice: 880.3,
-        totalValue: 70000000,
-        totalUnits: 80000,
-        isin: "US88160R1014",
-      },
-      {
-        symbol: "MSFT",
-        name: "Microsoft Corp.",
-        latestPrice: 310.4,
-        totalValue: 110000000,
-        totalUnits: 350000,
-        isin: "US5949181045",
-      },
-    ];
-
-    setTimeout(() => {
-      setRecommendations(dummyData);
-      setLoading(false);
-    }, 500); // simulate loading delay
-  }, [open]);
 
   const filteredRecommendations = useMemo(() => {
     const presentSymbols = new Set(
       (currentPortfolio || []).map((stock) => stock.symbol?.toUpperCase())
     );
-    return recommendations.filter(
+    return (recommendations || []).filter(
       (rec) => rec.symbol && !presentSymbols.has(rec.symbol.toUpperCase())
     );
   }, [recommendations, currentPortfolio]);
@@ -95,13 +46,12 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
     if (stock.latestPrice == null) {
       setToast({
         open: true,
-        message: `${stock.symbol} does not have a latest price in the dataset.`,
+        message: `${stock.symbol} does not have a latest price`,
         symbol: stock.symbol,
         severity: "error",
       });
       return;
     }
-
     try {
       await onAdd({
         symbol: stock.symbol,
@@ -111,26 +61,23 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
         buyDate: dayjs().format("YYYY-MM-DD"),
         currentPrice: stock.latestPrice,
       });
-
       setToast({
         open: true,
-        message: `${stock.symbol} has been added to your portfolio.`,
+        message: `${stock.symbol} added to portfolio`,
         symbol: stock.symbol,
         severity: "success",
       });
-    } catch (error) {
+    } catch (err) {
       setToast({
         open: true,
-        message: error.message || "Failed to add stock",
+        message: err.message || "Failed to add stock",
         symbol: stock.symbol,
         severity: "error",
       });
     }
   };
 
-  const handleCloseToast = () => {
-    setToast({ ...toast, open: false });
-  };
+  const handleCloseToast = () => setToast({ ...toast, open: false });
 
   return (
     <>
@@ -141,12 +88,13 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
         fullWidth
         PaperProps={{ sx: { maxHeight: "80vh" } }}
       >
-        <DialogTitle sx={{ pb: 1 }}>
+        <DialogTitle>
           <Typography variant="h4" component="div">
             Recommended Stocks
           </Typography>
           <DialogContentText sx={{ mt: 1 }}>
-            Explore popular dataset securities based on recent FAR transactions.
+            Explore recommended dataset securities based on recent FAR
+            transactions.
           </DialogContentText>
         </DialogTitle>
 
@@ -156,6 +104,10 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
               <Box sx={{ py: 5, display: "flex", justifyContent: "center" }}>
                 <CircularProgress size={28} />
               </Box>
+            ) : error ? (
+              <Typography color="error" align="center">
+                {error?.message || "Failed to fetch recommendations"}
+              </Typography>
             ) : filteredRecommendations.length === 0 ? (
               <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
                 All recommended stocks are already in your portfolio!
@@ -165,35 +117,19 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
                 <Card
                   key={stock.symbol}
                   variant="outlined"
-                  sx={{
-                    transition: "background-color 0.2s",
-                    "&:hover": { bgcolor: "action.hover" },
-                  }}
+                  sx={{ "&:hover": { bgcolor: "action.hover" } }}
                 >
                   <CardContent>
                     <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        justifyContent: "space-between",
-                      }}
+                      sx={{ display: "flex", justifyContent: "space-between" }}
                     >
                       <Box sx={{ flex: 1 }}>
-                        <Box
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 1,
-                            mb: 2,
-                          }}
-                        >
-                          <Typography variant="h6" fontWeight="bold">
-                            {stock.symbol}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {stock.name}
-                          </Typography>
-                        </Box>
+                        <Typography variant="h6" fontWeight="bold">
+                          {stock.symbol}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {stock.name}
+                        </Typography>
 
                         <Grid container spacing={2} sx={{ mb: 2 }}>
                           <Grid item xs={6}>
@@ -235,12 +171,9 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
                             sx={{ color: "success.main" }}
                           >
                             Units traded:{" "}
-                            {stock.totalUnits != null
-                              ? stock.totalUnits.toLocaleString()
-                              : "N/A"}
+                            {stock.totalUnits?.toLocaleString() ?? "N/A"}
                           </Typography>
                         </Box>
-
                         <Typography variant="body2" color="text.secondary">
                           Dataset security (ISIN: {stock.isin})
                         </Typography>
@@ -272,7 +205,7 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
       >
         <Alert
           onClose={handleCloseToast}
-          severity={toast.severity || "success"}
+          severity={toast.severity}
           sx={{ width: "100%" }}
         >
           {toast.message}

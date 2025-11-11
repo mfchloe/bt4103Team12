@@ -1,4 +1,5 @@
 fastapi==0.119.0 #modified
+torch
 pandas
 pydantic
 pydantic[email]
