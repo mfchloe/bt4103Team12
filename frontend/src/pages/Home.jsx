@@ -50,6 +50,12 @@ const Home = () => {
   const [profileInitial, setProfileInitial] = useState(null);
   const checkedProfileRef = useRef(false);
 
+  // to cache recommendations
+  const recommendationsCache = new Map();
+  const getPortfolioKey = (portfolioIds) => {
+    return portfolioIds.slice().sort().join(","); // sorted ensures order doesn't matter
+  };
+
   // recommendations
   const [recommendations, setRecommendations] = useState([]);
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
@@ -60,10 +66,24 @@ const Home = () => {
   const handleFetchRecommendations = async () => {
     if (!isAuthenticated) return;
 
-    const existingPortfolio = portfolio.map((s) => s.symbol).filter(Boolean);
+    const existingPortfolio = portfolio.map((s) => s.assetId).filter(Boolean);
+    const portfolioKey = getPortfolioKey(existingPortfolio);
+
     const userId = isFirebaseUser
       ? currentUser.uid
       : farCustomerSession?.customerId;
+
+    // Check cache
+    const cached = recommendationsCache.get(userId);
+    if (cached && cached.portfolioKey === portfolioKey) {
+      console.log("Using cached recommendations");
+      setRecommendations(cached.recommendations);
+      setShowRecommendations(true);
+      return;
+    }
+
+    setRecommendationsLoading(true);
+    setRecommendationsError(null);
 
     try {
       const res = await fetch(
@@ -84,14 +104,20 @@ const Home = () => {
       }
 
       const data = await res.json();
-      console.log("Recommendations API response:", data);
 
-      setShowRecommendations(true);
+      // save to cache
+      recommendationsCache.set(userId, {
+        portfolioKey,
+        recommendations: data.recommendations || [],
+      });
 
-      // Optionally store them in state
       setRecommendations(data.recommendations || []);
+      setShowRecommendations(true);
     } catch (err) {
       console.error("Failed to fetch recommendations:", err);
+      setRecommendationsError(err.message);
+    } finally {
+      setRecommendationsLoading(false);
     }
   };
 

@@ -32,6 +32,16 @@ HYPERPARAM_JSON_PATH = os.path.join(MODEL_PATH, 'lstm_hyperparams.json')
 
 # Path to customer dataset (to get customer clusters)
 CUSTOMER_DATASET_PATH = os.path.join(CURRENT_DIR, 'datasets', 'customer_information_engineered_kMeans.csv')
+ASSET_DATASET_PATH = os.path.join(CURRENT_DIR, 'datasets', 'asset_information_with_engineered.csv')
+
+ARIMA_COVARIANCE_PATH = os.path.join(CURRENT_DIR, 'datasets', 'processed_data', 'covariance.csv')
+ARIMA_PREDICTIONS_PATH = os.path.join(CURRENT_DIR, 'datasets', 'processed_data', 'predictions.csv')
+CLOSE_PRICES_PATH = os.path.join(CURRENT_DIR, 'datasets', 'close_prices.csv')
+
+
+# load asset dataset once to build mapping
+asset_df = pd.read_csv(ASSET_DATASET_PATH)
+isin_to_name = dict(zip(asset_df['ISIN'], asset_df['assetName']))
 
 
 """## Loading exported
@@ -402,6 +412,7 @@ def forecast_sharpe_ratio(
     if not isin:
         raise ValueError("isin must be provided.")
 
+
     # current_dir = os.path.dirname(os.path.abspath(__file__))
     # datasets_dir = os.path.join(current_dir, "..", "datasets")
     predictions_path = predictions_path # or os.path.join(datasets_dir, "predictions.csv")
@@ -413,6 +424,7 @@ def forecast_sharpe_ratio(
 
     predictions_df = pd.read_csv(predictions_path)
     predictions_df["ISIN"] = predictions_df["ISIN"].astype(str)
+    print(f"Predictions CSV columns: {predictions_df.columns.tolist()}")
 
     isin_str = str(isin)
     asset_predictions = predictions_df[predictions_df["ISIN"] == isin_str].copy()
@@ -542,15 +554,15 @@ def run_lstm(customerID, existing_portfolio):
 def run_arima(stock):
     return forecast_sharpe_ratio(
       isin = stock,
-      predictions_path = '/content/drive/My Drive/bt4103 capstone (just us)/2. datasets/FAR-Trans/processed_data/predictions.csv',
-      covariance_path = '/content/drive/My Drive/bt4103 capstone (just us)/2. datasets/FAR-Trans/processed_data/covariance.csv',
-      close_prices_path = '/content/drive/My Drive/bt4103 capstone (just us)/2. datasets/FAR-Trans/processed_data/close_prices.csv',
+      predictions_path = ARIMA_PREDICTIONS_PATH,
+      covariance_path = ARIMA_COVARIANCE_PATH,
+      close_prices_path = CLOSE_PRICES_PATH,
     )
 
 def get_top_10(dicts):
     n = len(dicts) # number of models, to divide by n to calculate weighted avg similarity score
     new = {}
-    print(dicts)
+    # print(dicts)
     for d in dicts:
         for stock, score in d.items():
             if stock in new:
@@ -640,14 +652,17 @@ def top_10_past(customerID, existing_portfolio):
 
 
 def top_10_future_ranked(customerID, existing_portfolio):
+    # stock is ISIN
     # returns [[stock, score, sharpe], [stock, score, sharpe],...] based on descending sharpe
     past10 = top_10_past(customerID, existing_portfolio) # [[stock1, score1], [stock2, score2], ..., [stock10, score10]]
     new_list = []
-    for stock, score in past10:
-        sharpe = run_arima(stock) # calls arima on the stock name
-        new_list.append([stock, score, sharpe]) # new_list = [[stock, score, sharpe], [stock, score, sharpe]...]
+    for isin, score in past10:
+        sharpe = run_arima(isin) # calls arima on the stock name
+        assetName = isin_to_name.get(isin, None)
+        new_list.append([isin, assetName, score, sharpe]) # new_list = [[stock, score, sharpe], [stock, score, sharpe]...]
 
     new_list.sort(key=lambda x: x[2], reverse=True) # sort by sharpe descending
+    print(new_list)
     return new_list
 
 def recommend(customerID, existing_portfolio):
