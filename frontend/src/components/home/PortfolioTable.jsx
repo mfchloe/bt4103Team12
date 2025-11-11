@@ -50,8 +50,6 @@ const StockRow = ({ stock, onRemove }) => {
   const canRemove = !stock.isSynthetic;
   const lastSeenPrice = stock.lastSeenPrice ?? stock.buyPrice;
   const lastSeenDate = stock.lastSeenDate ?? stock.buyDate;
-  const isAuto = stock.isSynthetic;
-  const dotColor = isAuto ? "#2563eb" : "#16a34a";
 
   return (
     <TableRow
@@ -61,16 +59,18 @@ const StockRow = ({ stock, onRemove }) => {
       }}
     >
       <TableCell sx={styles.symbolCell}>
-        <span
-          style={{
-            display: "inline-block",
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            backgroundColor: dotColor,
-            marginRight: 6,
-          }}
-        />
+        {canRemove && (
+          <span
+            style={{
+              display: "inline-block",
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              backgroundColor: "#16a34a",
+              marginRight: 6,
+            }}
+          />
+        )}
         <Tooltip title={stock.name || stock.symbol} arrow disableInteractive>
           <span>{stock.symbol}</span>
         </Tooltip>

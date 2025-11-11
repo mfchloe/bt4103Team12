@@ -13,7 +13,8 @@ from controllers import (
     portfolio_controller,
     sentiment_controller,
     yfinance_controller,
-    cluster_controller
+    cluster_controller,
+    recommendation_controller
 )
 from services.cluster_service import ClusterService 
 
@@ -136,6 +137,7 @@ app.include_router(dataset_timeseries_controller.router)
 app.include_router(far_controller.router)
 app.include_router(sentiment_controller.router)
 app.include_router(cluster_controller.router)
+app.include_router(recommendation_controller.router)
 
 
 @app.get("/")

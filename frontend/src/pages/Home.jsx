@@ -25,7 +25,7 @@ import { apiBaseUrl } from "../api/httpClient.js";
 import dayjs from "dayjs";
 import { db } from "../../firebase.jsx";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-
+import { useApi } from "../hooks/useApi.js";
 const STOCK_PRICE_API_URL = `${apiBaseUrl}/api/dataset/timeseries/batch`;
 
 const Home = () => {
@@ -34,7 +34,14 @@ const Home = () => {
   const [apiError, setApiError] = useState(null);
   const [showRecommendations, setShowRecommendations] = useState(false);
   const [showAddStock, setShowAddStock] = useState(false);
-  const { authFetch, isAuthenticated, currentUser } = useAuth();
+  const {
+    authFetch,
+    isAuthenticated,
+    currentUser,
+    farCustomerSession,
+    isFirebaseUser,
+    isFarCustomer,
+  } = useAuth();
   const navigate = useNavigate();
 
   const portfolioRef = useRef(portfolio);
@@ -42,6 +49,110 @@ const Home = () => {
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [profileInitial, setProfileInitial] = useState(null);
   const checkedProfileRef = useRef(false);
+
+  // to cache recommendations
+  const recommendationsCache = new Map();
+  const getPortfolioKey = (portfolioIds) => {
+    return portfolioIds.slice().sort().join(","); // sorted ensures order doesn't matter
+  };
+
+  // recommendations
+  const [recommendations, setRecommendations] = useState([]);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false);
+  const [recommendationsError, setRecommendationsError] = useState(null);
+
+  const CLUSTER_API_URL = `${apiBaseUrl}/cluster/predict`;
+
+  const handleFetchRecommendations = async () => {
+    if (!isAuthenticated) return;
+
+    const existingPortfolio = portfolio.map((s) => s.assetId).filter(Boolean);
+    const portfolioKey = getPortfolioKey(existingPortfolio);
+
+    const userId = isFirebaseUser
+      ? currentUser.uid
+      : farCustomerSession?.customerId;
+
+    // Check cache
+    const cached = recommendationsCache.get(userId);
+    if (cached && cached.portfolioKey === portfolioKey) {
+      console.log("Using cached recommendations");
+      setRecommendations(cached.recommendations);
+      setShowRecommendations(true);
+      return;
+    }
+
+    setRecommendationsLoading(true);
+    setRecommendationsError(null);
+
+    try {
+      const res = await fetch(
+        "http://localhost:8000/api/recommendation/recommend",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customer_id: userId,
+            existing_portfolio: existingPortfolio,
+          }),
+        }
+      );
+
+      if (!res.ok) {
+        const errorJson = await res.json().catch(() => ({}));
+        throw new Error(errorJson?.detail || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+
+      // save to cache
+      recommendationsCache.set(userId, {
+        portfolioKey,
+        recommendations: data.recommendations || [],
+      });
+
+      setRecommendations(data.recommendations || []);
+      setShowRecommendations(true);
+    } catch (err) {
+      console.error("Failed to fetch recommendations:", err);
+      setRecommendationsError(err.message);
+    } finally {
+      setRecommendationsLoading(false);
+    }
+  };
+
+  async function fetchClusterForProfile({
+    investorType,
+    customerType,
+    riskLevel,
+    diversificationScore,
+    investmentCapacity,
+  }) {
+    // Map frontend keys -> backend keys
+    const body = {
+      investor_type: investorType,
+      customer_type: customerType,
+      risk_level: riskLevel,
+      capacity: investmentCapacity,
+      diversification: Number(diversificationScore),
+    };
+
+    const res = await fetch(CLUSTER_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Cluster API failed (${res.status})`);
+    }
+    const data = await res.json();
+    if (typeof data?.cluster !== "number") {
+      throw new Error("Cluster API returned an invalid response.");
+    }
+    return data.cluster; // integer ID
+  }
 
   useEffect(() => {
     portfolioRef.current = portfolio;
@@ -382,11 +493,26 @@ const Home = () => {
             Add Stock
           </Button>
           <Button
-            onClick={() => setShowRecommendations(true)}
-            disabled={portfolioLoading || portfolio.length === 0}
-            sx={[styles.button, styles.reccoButton]}
+            onClick={handleFetchRecommendations}
+            disabled={
+              portfolioLoading ||
+              portfolio.length === 0 ||
+              recommendationsLoading
+            }
+            sx={{
+              color: "white",
+              px: 3,
+              py: 1.5,
+              bgcolor: "#2E8B8B",
+              "&:disabled": { bgcolor: "#cccccc" },
+              "&:hover": { bgcolor: "#267373" },
+            }}
           >
-            Get Recommendations
+            {recommendationsLoading ? (
+              <CircularProgress size={20} />
+            ) : (
+              "Get Recommendations"
+            )}
           </Button>
         </Box>
 
@@ -420,6 +546,9 @@ const Home = () => {
           onClose={() => setShowRecommendations(false)}
           onAdd={handleAddRecommendation}
           currentPortfolio={portfolio}
+          recommendations={recommendations || []}
+          loading={recommendationsLoading}
+          error={recommendationsError}
         />
       </Box>
       <UserProfileDialog
