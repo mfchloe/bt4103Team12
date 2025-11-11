@@ -79,6 +79,59 @@ const Profile = () => {
     divScore >= 0 &&
     divScore <= 1;
 
+  // Compute cluster for profile
+  function computeClusterFromProfile({
+    investorType,
+    customerType,
+    riskLevel,
+    diversificationScore,
+    investmentCapacity,
+  }) {
+    const divRaw = Number(diversificationScore);
+    const div = Number.isFinite(divRaw) ? divRaw : 0; // 0–1 expected
+
+    const isPremium =
+      customerType === "premium" ||
+      investmentCapacity === "CAP_80K_300K" ||
+      investmentCapacity === "CAP_GT300K";
+
+    const isHighRiskPref =
+      riskLevel === "balanced" || riskLevel === "aggressive";
+
+    const isLowRiskPref =
+      riskLevel === "income" || riskLevel === "conservative";
+
+    const isActiveish =
+      investorType === "active_trader" || investorType === "moderate_trader";
+
+    // --- SEGMENT 0: Premium / higher-capacity, more engaged, somewhat diversified ---
+    // maps to: Premium, Balanced, active_trader, div ≈ 0.32
+    if (
+      isPremium &&
+      (isHighRiskPref || isActiveish) &&
+      div >= 0.25 // "has started diversifying"
+    ) {
+      return 0;
+    }
+
+    // --- SEGMENT 2: Conservative buy & hold, modest diversification ---
+    // maps to: Mass, Income, buy_and_hold, div ≈ 0.2
+    if (
+      customerType === "mass" &&
+      isLowRiskPref &&
+      investorType === "buy_and_hold" &&
+      div >= 0.05 && // not totally concentrated
+      div < 0.35 && // not as spread as Seg 0 premium types
+      !isPremium
+    ) {
+      return 2;
+    }
+
+    // --- SEGMENT 1: Default / concentrated / active / mass retail ---
+    // includes: low div, income focus, active traders, odd combos
+    return 1;
+  }
+
   const handleUpdateProfile = async () => {
     if (!isValid || !currentUser?.uid) return;
 
@@ -88,6 +141,15 @@ const Profile = () => {
 
     try {
       const ref = doc(db, "users", currentUser.uid);
+
+      const clusterId = computeClusterFromProfile({
+        investorType,
+        customerType,
+        riskLevel,
+        diversificationScore: divScore,
+        investmentCapacity: capacity,
+      });
+
       const docData = {
         investorType,
         customerType,
@@ -96,6 +158,8 @@ const Profile = () => {
         investmentCapacity: capacity,
         profileCompleted: true,
         updatedAt: serverTimestamp(),
+        clusterId,
+        clusterUpdatedAt: serverTimestamp(),
       };
       await setDoc(ref, docData, { merge: true });
       setSuccessMessage("Profile updated successfully!");
