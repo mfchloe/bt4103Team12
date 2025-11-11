@@ -196,19 +196,22 @@ const Home = () => {
   const sharpeRatio = calculateSharpeRatio(portfolio);
 
   const handleAddStock = useCallback((stock) => {
+    const buyPrice = Number(stock.buyPrice)
+    const hasCurrentPrice = stock.currentPrice !== undefined && stock.currentPrice !== null;
+
     // Create a new stock object locally
     const newStock = {
       id: `local-${Date.now()}`, // unique id for React key
       symbol: stock.symbol?.toUpperCase(),
       name: stock.name,
       shares: Number(stock.shares),
-      buyPrice: Number(stock.buyPrice),
+      buyPrice: buyPrice,
       buyDate: stock.buyDate ? dayjs(stock.buyDate).format("YYYY-MM-DD") : null,
       currentPrice:
-        stock.currentPrice !== undefined ? Number(stock.currentPrice) : null,
+        hasCurrentPrice ? Number(stock.currentPrice) : null,
       isSynthetic: false,
       lastSeenPrice:
-        stock.currentPrice !== undefined ? Number(stock.currentPrice) : null,
+        Number.isFinite(buyPrice) ? buyPrice : null,
       lastSeenDate: stock.buyDate
         ? dayjs(stock.buyDate).format("YYYY-MM-DD")
         : null,
