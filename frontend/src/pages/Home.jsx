@@ -42,40 +42,6 @@ const Home = () => {
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [profileInitial, setProfileInitial] = useState(null);
   const checkedProfileRef = useRef(false);
-  const CLUSTER_API_URL = `${apiBaseUrl}/cluster/predict`;
-
-  async function fetchClusterForProfile({
-    investorType,
-    customerType,
-    riskLevel,
-    diversificationScore,
-    investmentCapacity,
-  }) {
-    // Map frontend keys -> backend keys
-    const body = {
-      investor_type: investorType,
-      customer_type: customerType,
-      risk_level: riskLevel,
-      capacity: investmentCapacity,
-      diversification: Number(diversificationScore),
-    };
-
-    const res = await fetch(CLUSTER_API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text || `Cluster API failed (${res.status})`);
-    }
-    const data = await res.json();
-    if (typeof data?.cluster !== "number") {
-      throw new Error("Cluster API returned an invalid response.");
-    }
-    return data.cluster; // integer ID
-  }
 
   useEffect(() => {
     portfolioRef.current = portfolio;
@@ -196,8 +162,9 @@ const Home = () => {
   const sharpeRatio = calculateSharpeRatio(portfolio);
 
   const handleAddStock = useCallback((stock) => {
-    const buyPrice = Number(stock.buyPrice)
-    const hasCurrentPrice = stock.currentPrice !== undefined && stock.currentPrice !== null;
+    const buyPrice = Number(stock.buyPrice);
+    const hasCurrentPrice =
+      stock.currentPrice !== undefined && stock.currentPrice !== null;
 
     // Create a new stock object locally
     const newStock = {
@@ -207,11 +174,9 @@ const Home = () => {
       shares: Number(stock.shares),
       buyPrice: buyPrice,
       buyDate: stock.buyDate ? dayjs(stock.buyDate).format("YYYY-MM-DD") : null,
-      currentPrice:
-        hasCurrentPrice ? Number(stock.currentPrice) : null,
+      currentPrice: hasCurrentPrice ? Number(stock.currentPrice) : null,
       isSynthetic: false,
-      lastSeenPrice:
-        Number.isFinite(buyPrice) ? buyPrice : null,
+      lastSeenPrice: Number.isFinite(buyPrice) ? buyPrice : null,
       lastSeenDate: stock.buyDate
         ? dayjs(stock.buyDate).format("YYYY-MM-DD")
         : null,
@@ -282,18 +247,71 @@ const Home = () => {
     [handleAddStock]
   );
 
+  // Compute cluster for profile
+  function computeClusterFromProfile({
+    investorType,
+    customerType,
+    riskLevel,
+    diversificationScore,
+    investmentCapacity,
+  }) {
+    const divRaw = Number(diversificationScore);
+    const div = Number.isFinite(divRaw) ? divRaw : 0; // 0–1 expected
+
+    const isPremium =
+      customerType === "premium" ||
+      investmentCapacity === "CAP_80K_300K" ||
+      investmentCapacity === "CAP_GT300K";
+
+    const isHighRiskPref =
+      riskLevel === "balanced" || riskLevel === "aggressive";
+
+    const isLowRiskPref =
+      riskLevel === "income" || riskLevel === "conservative";
+
+    const isActiveish =
+      investorType === "active_trader" || investorType === "moderate_trader";
+
+    // --- SEGMENT 0: Premium / higher-capacity, more engaged, somewhat diversified ---
+    // maps to: Premium, Balanced, active_trader, div ≈ 0.32
+    if (
+      isPremium &&
+      (isHighRiskPref || isActiveish) &&
+      div >= 0.25 // "has started diversifying"
+    ) {
+      return 0;
+    }
+
+    // --- SEGMENT 2: Conservative buy & hold, modest diversification ---
+    // maps to: Mass, Income, buy_and_hold, div ≈ 0.2
+    if (
+      customerType === "mass" &&
+      isLowRiskPref &&
+      investorType === "buy_and_hold" &&
+      div >= 0.05 && // not totally concentrated
+      div < 0.35 && // not as spread as Seg 0 premium types
+      !isPremium
+    ) {
+      return 2;
+    }
+
+    // --- SEGMENT 1: Default / concentrated / active / mass retail ---
+    // includes: low div, income focus, active traders, odd combos
+    return 1;
+  }
+
   const handleSaveProfile = async (payload) => {
     // payload has: investorType, customerType, riskLevel, diversificationScore, investmentCapacity
     const ref = doc(db, "users", currentUser.uid);
 
     try {
-      // 1) get cluster id from backend
-      const clusterId = await fetchClusterForProfile(payload);
+      // 1) compute cluster id using rules
+      const clusterId = await computeClusterFromProfile(payload);
 
       // 2) save everything (profile + cluster) in one Firestore write
       const docData = {
         ...payload,
-        clusterId, // ← store cluster
+        clusterId,
         clusterUpdatedAt: serverTimestamp(),
         profileCompleted: true,
         updatedAt: serverTimestamp(),
@@ -315,9 +333,6 @@ const Home = () => {
         ...(profileInitial ? {} : { createdAt: serverTimestamp() }),
       };
       await setDoc(ref, docData, { merge: true });
-
-      // Optional: toast the warning to the user
-      // setApiError("Saved profile, but clustering is temporarily unavailable.");
     }
   };
 
