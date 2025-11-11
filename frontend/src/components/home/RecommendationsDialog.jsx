@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -12,124 +13,94 @@ import {
   Snackbar,
   Alert,
   CircularProgress,
+  Chip,
+  IconButton,
 } from "@mui/material";
-import { Add, TrendingUp } from "@mui/icons-material";
-import { useEffect, useMemo, useState } from "react";
+import {
+  TrendingUp,
+  TrendingDown,
+  CheckCircle,
+  CheckCircleOutline,
+} from "@mui/icons-material";
 import dayjs from "dayjs";
+import { GREEN } from "../../constants/colors";
 
-const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
+const RecommendationsDialog = ({
+  open,
+  onClose,
+  onAdd,
+  currentPortfolio,
+  recommendations,
+  loading,
+  error,
+}) => {
   const [toast, setToast] = useState({
     open: false,
     message: "",
-    symbol: "",
     severity: "success",
   });
-  const [loading, setLoading] = useState(false);
-  const [recommendations, setRecommendations] = useState([]);
+  const [selectedStocks, setSelectedStocks] = useState(new Set());
 
-  // Dummy recommendations
-  useEffect(() => {
-    if (!open) return;
-
-    setLoading(true);
-
-    const dummyData = [
-      {
-        symbol: "AAPL",
-        name: "Apple Inc.",
-        latestPrice: 175.25,
-        totalValue: 120000000,
-        totalUnits: 685000,
-        isin: "US0378331005",
-      },
-      {
-        symbol: "GOOGL",
-        name: "Alphabet Inc.",
-        latestPrice: 135.1,
-        totalValue: 95000000,
-        totalUnits: 703000,
-        isin: "US02079K3059",
-      },
-      {
-        symbol: "AMZN",
-        name: "Amazon.com Inc.",
-        latestPrice: 3250.5,
-        totalValue: 140000000,
-        totalUnits: 43000,
-        isin: "US0231351067",
-      },
-      {
-        symbol: "TSLA",
-        name: "Tesla Inc.",
-        latestPrice: 880.3,
-        totalValue: 70000000,
-        totalUnits: 80000,
-        isin: "US88160R1014",
-      },
-      {
-        symbol: "MSFT",
-        name: "Microsoft Corp.",
-        latestPrice: 310.4,
-        totalValue: 110000000,
-        totalUnits: 350000,
-        isin: "US5949181045",
-      },
-    ];
-
-    setTimeout(() => {
-      setRecommendations(dummyData);
-      setLoading(false);
-    }, 500); // simulate loading delay
-  }, [open]);
+  const transformedRecommendations = useMemo(() => {
+    if (!recommendations || !Array.isArray(recommendations)) return [];
+    return recommendations.map((rec) => ({
+      symbol: rec[0],
+      name: rec[1],
+      similarityScore: rec[2],
+      sharpeRatio: rec[3],
+    }));
+  }, [recommendations]);
 
   const filteredRecommendations = useMemo(() => {
-    const presentSymbols = new Set(
-      (currentPortfolio || []).map((stock) => stock.symbol?.toUpperCase())
+    const existingSymbols = new Set(
+      currentPortfolio.map((s) => s.symbol?.toUpperCase())
     );
-    return recommendations.filter(
-      (rec) => rec.symbol && !presentSymbols.has(rec.symbol.toUpperCase())
+    return transformedRecommendations.filter(
+      (rec) => rec.symbol && !existingSymbols.has(rec.symbol.toUpperCase())
     );
-  }, [recommendations, currentPortfolio]);
+  }, [transformedRecommendations, currentPortfolio]);
 
-  const handleAddStock = async (stock) => {
-    if (stock.latestPrice == null) {
-      setToast({
-        open: true,
-        message: `${stock.symbol} does not have a latest price in the dataset.`,
-        symbol: stock.symbol,
-        severity: "error",
-      });
-      return;
-    }
-
-    try {
-      await onAdd({
-        symbol: stock.symbol,
-        name: stock.name,
-        shares: 1,
-        buyPrice: stock.latestPrice,
-        buyDate: dayjs().format("YYYY-MM-DD"),
-        currentPrice: stock.latestPrice,
-      });
-
-      setToast({
-        open: true,
-        message: `${stock.symbol} has been added to your portfolio.`,
-        symbol: stock.symbol,
-        severity: "success",
-      });
-    } catch (error) {
-      setToast({
-        open: true,
-        message: error.message || "Failed to add stock",
-        symbol: stock.symbol,
-        severity: "error",
-      });
-    }
+  const toggleSelectStock = (symbol) => {
+    setSelectedStocks((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(symbol)) newSet.delete(symbol);
+      else newSet.add(symbol);
+      return newSet;
+    });
   };
 
-  const handleCloseToast = () => {
-    setToast({ ...toast, open: false });
+  const handleAddSelected = async () => {
+    for (const symbol of selectedStocks) {
+      const stock = filteredRecommendations.find((s) => s.symbol === symbol);
+      if (stock) {
+        await onAdd({
+          symbol: stock.symbol,
+          name: stock.name,
+          shares: 1,
+          buyPrice: 0,
+          buyDate: dayjs().format("YYYY-MM-DD"),
+          currentPrice: 0,
+        });
+      }
+    }
+    setToast({
+      open: true,
+      message: `${selectedStocks.size} asset${
+        selectedStocks.size > 1 ? "s" : ""
+      } added to portfolio`,
+      severity: "success",
+    });
+    setSelectedStocks(new Set());
+    onClose();
+  };
+
+  const handleCloseToast = () => setToast({ ...toast, open: false });
+
+  const getSharpeColor = (sharpe) => {
+    if (sharpe > 0.5) return "success.main";
+    if (sharpe > 0) return "info.main";
+    if (sharpe > -0.5) return "warning.main";
+    return "error.main";
   };
 
   return (
@@ -139,128 +110,145 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
         onClose={onClose}
         maxWidth="md"
         fullWidth
-        PaperProps={{ sx: { maxHeight: "80vh" } }}
+        PaperProps={{ sx: styles.dialogPaper }}
       >
-        <DialogTitle sx={{ pb: 1 }}>
-          <Typography variant="h4" component="div">
-            Recommended Stocks
-          </Typography>
-          <DialogContentText sx={{ mt: 1 }}>
-            Explore popular dataset securities based on recent FAR transactions.
+        <DialogTitle>
+          <Typography sx={styles.title}>Recommended Assets</Typography>
+          <DialogContentText sx={styles.subtitle}>
+            Select assets to add to your portfolio
           </DialogContentText>
         </DialogTitle>
 
         <DialogContent>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 2 }}>
+          <Box sx={styles.contentContainer}>
+            {selectedStocks.size > 0 && (
+              <Box sx={styles.selectedHint}>
+                <Typography variant="body2" color="info.contrastText">
+                  You have selected {selectedStocks.size} asset
+                  {selectedStocks.size > 1 ? "s" : ""}. Scroll down and click{" "}
+                  <strong>Add Selected</strong> to add them to your portfolio.
+                </Typography>
+              </Box>
+            )}
+
             {loading ? (
-              <Box sx={{ py: 5, display: "flex", justifyContent: "center" }}>
+              <Box sx={styles.loader}>
                 <CircularProgress size={28} />
               </Box>
+            ) : error ? (
+              <Typography color="error" align="center">
+                {error?.message || "Failed to fetch recommendations"}
+              </Typography>
             ) : filteredRecommendations.length === 0 ? (
               <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
-                All recommended stocks are already in your portfolio!
+                {recommendations?.length > 0
+                  ? "All recommended assets are already in your portfolio!"
+                  : "No recommendations available at this time."}
               </Typography>
             ) : (
-              filteredRecommendations.map((stock) => (
-                <Card
-                  key={stock.symbol}
-                  variant="outlined"
-                  sx={{
-                    transition: "background-color 0.2s",
-                    "&:hover": { bgcolor: "action.hover" },
-                  }}
-                >
-                  <CardContent>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <Box sx={{ flex: 1 }}>
-                        <Box
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 1,
-                            mb: 2,
-                          }}
-                        >
-                          <Typography variant="h6" fontWeight="bold">
-                            {stock.symbol}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {stock.name}
-                          </Typography>
-                        </Box>
-
-                        <Grid container spacing={2} sx={{ mb: 2 }}>
-                          <Grid item xs={6}>
-                            <Typography variant="body2" color="text.secondary">
-                              Current Price
+              filteredRecommendations.map((stock, index) => {
+                const selected = selectedStocks.has(stock.symbol);
+                return (
+                  <Card
+                    key={stock.symbol}
+                    variant="outlined"
+                    sx={{
+                      ...styles.card,
+                      borderLeftColor: getSharpeColor(stock.sharpeRatio),
+                    }}
+                  >
+                    <CardContent>
+                      <Box sx={styles.cardContent}>
+                        <Box sx={{ flex: 1 }}>
+                          <Box sx={styles.cardHeader}>
+                            <Chip
+                              label={`#${index + 1}`}
+                              size="small"
+                              color="primary"
+                              variant="outlined"
+                            />
+                            <Typography variant="h6" fontWeight="bold">
+                              {stock.name}
                             </Typography>
-                            <Typography variant="body1" fontWeight="600">
-                              {stock.latestPrice != null
-                                ? `$${stock.latestPrice.toFixed(2)}`
-                                : "N/A"}
-                            </Typography>
-                          </Grid>
-                          <Grid item xs={6}>
-                            <Typography variant="body2" color="text.secondary">
-                              Total Value Traded
-                            </Typography>
-                            <Typography variant="body1" fontWeight="600">
-                              {stock.totalValue != null
-                                ? `$${stock.totalValue.toLocaleString()}`
-                                : "N/A"}
-                            </Typography>
-                          </Grid>
-                        </Grid>
-
-                        <Box
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 1,
-                            mb: 1,
-                          }}
-                        >
-                          <TrendingUp
-                            sx={{ fontSize: 20, color: "success.main" }}
-                          />
+                          </Box>
                           <Typography
                             variant="body2"
-                            fontWeight="500"
-                            sx={{ color: "success.main" }}
+                            color="text.secondary"
+                            sx={{ mb: 2 }}
                           >
-                            Units traded:{" "}
-                            {stock.totalUnits != null
-                              ? stock.totalUnits.toLocaleString()
-                              : "N/A"}
+                            {stock.symbol}
                           </Typography>
+
+                          <Grid container spacing={2} sx={{ mb: 2 }}>
+                            <Grid item xs={6}>
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                Similarity Score
+                              </Typography>
+                              <Typography variant="body1" fontWeight="600">
+                                {(stock.similarityScore * 100).toFixed(2)}%
+                              </Typography>
+                            </Grid>
+                            <Grid item xs={6}>
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                Sharpe Ratio
+                              </Typography>
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 0.5,
+                                }}
+                              >
+                                <Typography
+                                  variant="body1"
+                                  fontWeight="600"
+                                  sx={{
+                                    color: getSharpeColor(stock.sharpeRatio),
+                                  }}
+                                >
+                                  {stock.sharpeRatio.toFixed(3)}
+                                </Typography>
+                                {stock.sharpeRatio > 0 ? (
+                                  <TrendingUp
+                                    sx={{ fontSize: 18, color: "success.main" }}
+                                  />
+                                ) : (
+                                  <TrendingDown
+                                    sx={{ fontSize: 18, color: "error.main" }}
+                                  />
+                                )}
+                              </Box>
+                            </Grid>
+                          </Grid>
                         </Box>
 
-                        <Typography variant="body2" color="text.secondary">
-                          Dataset security (ISIN: {stock.isin})
-                        </Typography>
+                        <IconButton
+                          onClick={() => toggleSelectStock(stock.symbol)}
+                          sx={{ color: selected ? GREEN : "default" }}
+                        >
+                          {selected ? <CheckCircle /> : <CheckCircleOutline />}
+                        </IconButton>
                       </Box>
-
-                      <Button
-                        onClick={() => handleAddStock(stock)}
-                        variant="contained"
-                        size="small"
-                        startIcon={<Add />}
-                        sx={{ ml: 2 }}
-                      >
-                        Add
-                      </Button>
-                    </Box>
-                  </CardContent>
-                </Card>
-              ))
+                    </CardContent>
+                  </Card>
+                );
+              })
             )}
           </Box>
+
+          {selectedStocks.size > 0 && (
+            <Box sx={styles.addSelectedContainer}>
+              <Button variant="contained" onClick={handleAddSelected}>
+                Add {selectedStocks.size} Selected
+              </Button>
+            </Box>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -272,7 +260,7 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
       >
         <Alert
           onClose={handleCloseToast}
-          severity={toast.severity || "success"}
+          severity={toast.severity}
           sx={{ width: "100%" }}
         >
           {toast.message}
@@ -283,3 +271,26 @@ const RecommendationsDialog = ({ open, onClose, onAdd, currentPortfolio }) => {
 };
 
 export default RecommendationsDialog;
+
+const styles = {
+  dialogPaper: { maxHeight: "80vh" },
+  title: { fontSize: 20 },
+  subtitle: { mt: 1 },
+  contentContainer: { display: "flex", flexDirection: "column", gap: 2, mt: 2 },
+  selectedHint: {
+    my: 1,
+    p: 1,
+    bgcolor: GREEN,
+    borderRadius: 1,
+    textAlign: "center",
+  },
+  loader: { py: 5, display: "flex", justifyContent: "center" },
+  card: { "&:hover": { bgcolor: "action.hover" }, borderLeft: "4px solid" },
+  cardContent: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+  cardHeader: { display: "flex", alignItems: "center", gap: 1, mb: 1 },
+  addSelectedContainer: { display: "flex", justifyContent: "flex-end", mt: 2 },
+};
