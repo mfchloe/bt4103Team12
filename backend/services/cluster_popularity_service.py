@@ -4,6 +4,8 @@ import os
 from functools import lru_cache
 import pandas as pd
 
+from services.dataset_time_series_service import DatasetTimeSeriesService
+
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
 CUSTOMER_INFO_PATH = os.path.join(
@@ -17,6 +19,25 @@ TX_PATH = os.path.join(
     "datasets",
     "customer_transactions.csv",
 )
+
+_dataset_service = DatasetTimeSeriesService()
+
+
+@lru_cache(maxsize=4096)
+def _get_asset_display_info(isin: str) -> dict:
+    """
+    Returns cached metadata so we can show human-readable names in fallbacks.
+    """
+    normalized = (isin or "").strip()
+    if not normalized:
+        return {}
+
+    try:
+        info = _dataset_service.get_asset_info_by_isin(normalized)
+    except Exception:
+        return {}
+
+    return info or {}
 
 
 @lru_cache(maxsize=1)
@@ -112,12 +133,18 @@ def get_top_assets_for_cluster(cluster_id: int, existing_portfolio, top_k: int =
         if rank > top_k:
             break
 
-        # You can enhance this later (lookup name, compute Sharpe, etc.)
+        asset_info = _get_asset_display_info(symbol)
+        display_name = (
+            (asset_info.get("name") or asset_info.get("symbol"))
+            if asset_info
+            else None
+        )
+
         recs.append([
-            symbol,         # symbol
-            symbol,         # name fallback
-            0.0,            # similarityScore (no model, so neutral)
-            0.0,            # sharpeRatio (or plug in precomputed if you have)
+            symbol,                 # keep ISIN as the identifier/symbol
+            display_name or symbol, # show company/asset name when possible
+            0.0,                    # similarityScore (no model, so neutral)
+            0.0,                    # sharpeRatio placeholder
         ])
 
     return recs
