@@ -13,7 +13,10 @@ import {
 } from "recharts";
 import { Box, Typography, Paper, Grid } from "@mui/material";
 import { GREEN, RED } from "../../constants/colors";
-import { formatCurrency } from "../../utils/mathHelpers";
+import {
+  calculateStockStats,
+  formatCurrency,
+} from "../../utils/mathHelpers";
 
 const COLORS = [
   "#305D9E",
@@ -142,46 +145,44 @@ const ReturnBarChart = ({ data }) => (
 
 // ---------- Main Section ----------
 const ChartsSection = ({ portfolio }) => {
-  const allocationData = portfolio.map((s) => ({
-    name: s.symbol,
-    value: s.shares * s.currentPrice,
-    percentage: 0,
-  }));
-  const totalValue = allocationData.reduce((sum, i) => sum + i.value, 0);
-  allocationData.forEach(
-    (i) => (i.percentage = ((i.value / totalValue) * 100).toFixed(1))
+  const filteredPortfolio = portfolio.filter(
+    (stock) => Number(stock.shares) > 0
   );
 
-  const safeReturnPercent = (currentPrice, buyPrice) => {
-    const buy = Number(buyPrice);
-    const current = Number(currentPrice);
-    if (!Number.isFinite(buy) || buy <= 0) return null;
-    if (!Number.isFinite(current)) return null;
-    return ((current - buy) / buy) * 100;
-  };
+  const portfolioWithStats = filteredPortfolio.map((stock) => ({
+    stock,
+    stats: calculateStockStats(stock),
+  }));
 
-  const plData = portfolio
-    .map((s) => {
-      const pl = (s.currentPrice - s.buyPrice) * s.shares;
-      const plPercent = safeReturnPercent(s.currentPrice, s.buyPrice);
-      return {
-        name: s.symbol,
-        pl,
-        plPercent:
-          plPercent === null ? "-" : plPercent.toFixed(2),
-      };
-    })
+  const allocationData = portfolioWithStats.map(({ stock, stats }) => ({
+    name: stock.symbol,
+    value: Number.isFinite(stats.totalValue) ? stats.totalValue : 0,
+    percentage: 0,
+  }));
+  const totalValue = allocationData.reduce((sum, entry) => sum + entry.value, 0);
+  allocationData.forEach((entry) => {
+    entry.percentage = totalValue
+      ? ((entry.value / totalValue) * 100).toFixed(1)
+      : "0.0";
+  });
+
+  const plData = portfolioWithStats
+    .map(({ stock, stats }) => ({
+      name: stock.symbol,
+      pl: stats.pl,
+      plPercent: Number.isFinite(stats.returnPercent)
+        ? stats.returnPercent.toFixed(2)
+        : "-",
+    }))
     .sort((a, b) => b.pl - a.pl);
 
-  const returnData = portfolio
-    .map((s) => {
-      const value = safeReturnPercent(s.currentPrice, s.buyPrice);
-      return value === null
-        ? null
-        : {
-            name: s.symbol,
-            return: parseFloat(value.toFixed(2)),
-          };
+  const returnData = portfolioWithStats
+    .map(({ stock, stats }) => {
+      if (!Number.isFinite(stats.returnPercent)) return null;
+      return {
+        name: stock.symbol,
+        return: Number(stats.returnPercent.toFixed(2)),
+      };
     })
     .filter(Boolean)
     .sort((a, b) => b.return - a.return);
