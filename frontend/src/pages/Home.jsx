@@ -332,6 +332,19 @@ const Home = () => {
       : snapshot?.price ?? null;
 
     // Create a new stock object locally
+    const mergedKey = (snapshot?.isin || canonicalSymbol || rawSymbol || "")
+      .toString()
+      .toUpperCase();
+    const existingIndex = portfolioRef.current.findIndex((item) => {
+      const existingKey = (
+        item.isin ||
+        item.symbol
+      )
+        ?.toString()
+        .toUpperCase();
+      return existingKey && existingKey === mergedKey;
+    });
+
     const newStock = {
       id: `local-${Date.now()}`, // unique id for React key
       symbol: canonicalSymbol,
@@ -347,7 +360,22 @@ const Home = () => {
       isNew: true, // mark as new for highlighting
     };
 
-    setPortfolio((prev) => [...prev, newStock]);
+    setPortfolio((prev) => {
+      const next = [...prev];
+      if (existingIndex >= 0) {
+        const merged = { ...next[existingIndex] };
+        merged.shares = Number(merged.shares) + Number(newStock.shares);
+        merged.buyPrice = newStock.buyPrice; // optional: keep latest buy price
+        merged.currentPrice =
+          newStock.currentPrice ?? merged.currentPrice ?? 0;
+        merged.lastSeenPrice = newStock.lastSeenPrice ?? merged.lastSeenPrice;
+        merged.lastSeenDate = newStock.lastSeenDate ?? merged.lastSeenDate;
+        merged.isNew = true;
+        next[existingIndex] = merged;
+        return next;
+      }
+      return [...next, newStock];
+    });
   }, [resolveDisplaySymbol, fetchLatestSnapshot]);
 
   const handleRemoveStock = useCallback((id) => {

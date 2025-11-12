@@ -87,23 +87,22 @@ const PortfolioPieChart = ({ data }) => {
       </Box>
 
       <Box sx={styles.legendBox}>
-        {chartData.map((entry, index) => (
-          <Box
-            key={entry.name}
-            sx={{
-              ...styles.legendItem,
-              mb: index === chartData.length - 1 ? 0 : 1.5,
-            }}
-          >
-            <Box sx={styles.legendItemTextBox}>
-              <Box sx={{ ...styles.legendDot, bgcolor: entry.color }} />
-              <Typography sx={styles.legendLabel}>{entry.name}</Typography>
+        <Box sx={styles.legendContent}>
+          {chartData.map((entry, index) => (
+            <Box
+              key={entry.name}
+              sx={{
+                ...styles.legendItem,
+                mb: index === chartData.length - 1 ? 0 : 1.5,
+              }}
+            >
+              <Box sx={styles.legendItemTextBox}>
+                <Box sx={{ ...styles.legendDot, bgcolor: entry.color }} />
+                <Typography sx={styles.legendLabel}>{entry.name}</Typography>
+              </Box>
             </Box>
-            {/* <Typography sx={styles.legendValue}>
-              {entry.percentage}% | {formatCurrency(entry.value)}
-            </Typography> */}
-          </Box>
-        ))}
+          ))}
+        </Box>
       </Box>
     </Box>
   );
@@ -153,23 +152,38 @@ const ChartsSection = ({ portfolio }) => {
     (i) => (i.percentage = ((i.value / totalValue) * 100).toFixed(1))
   );
 
+  const safeReturnPercent = (currentPrice, buyPrice) => {
+    const buy = Number(buyPrice);
+    const current = Number(currentPrice);
+    if (!Number.isFinite(buy) || buy <= 0) return null;
+    if (!Number.isFinite(current)) return null;
+    return ((current - buy) / buy) * 100;
+  };
+
   const plData = portfolio
-    .map((s) => ({
-      name: s.symbol,
-      pl: (s.currentPrice - s.buyPrice) * s.shares,
-      plPercent: (((s.currentPrice - s.buyPrice) / s.buyPrice) * 100).toFixed(
-        2
-      ),
-    }))
+    .map((s) => {
+      const pl = (s.currentPrice - s.buyPrice) * s.shares;
+      const plPercent = safeReturnPercent(s.currentPrice, s.buyPrice);
+      return {
+        name: s.symbol,
+        pl,
+        plPercent:
+          plPercent === null ? "-" : plPercent.toFixed(2),
+      };
+    })
     .sort((a, b) => b.pl - a.pl);
 
   const returnData = portfolio
-    .map((s) => ({
-      name: s.symbol,
-      return: parseFloat(
-        (((s.currentPrice - s.buyPrice) / s.buyPrice) * 100).toFixed(2)
-      ),
-    }))
+    .map((s) => {
+      const value = safeReturnPercent(s.currentPrice, s.buyPrice);
+      return value === null
+        ? null
+        : {
+            name: s.symbol,
+            return: parseFloat(value.toFixed(2)),
+          };
+    })
+    .filter(Boolean)
     .sort((a, b) => b.return - a.return);
 
   return (
@@ -214,8 +228,27 @@ const styles = {
     minWidth: { xs: "100%" },
     maxHeight: 280,
     overflowY: "auto",
+    overflowX: "hidden",
     borderRadius: 2,
     p: 2,
+    direction: "rtl", // moves the scrollbar to the left
+    "&::-webkit-scrollbar": {
+      width: 8,
+    },
+    "&::-webkit-scrollbar-track": {
+      background: "#f1f1f1",
+      borderRadius: 8,
+    },
+    "&::-webkit-scrollbar-thumb": {
+      background: "#cbd5f5",
+      borderRadius: 8,
+    },
+    "&::-webkit-scrollbar-thumb:hover": {
+      background: "#94a3b8",
+    },
+  },
+  legendContent: {
+    direction: "ltr",
   },
   legendItem: {
     display: "flex",
