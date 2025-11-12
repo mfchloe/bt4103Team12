@@ -46,6 +46,7 @@ const Home = () => {
   const navigate = useNavigate();
 
   const portfolioRef = useRef(portfolio);
+  const assetLookupCacheRef = useRef(new Map());
 
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [profileInitial, setProfileInitial] = useState(null);
@@ -136,10 +137,17 @@ const Home = () => {
     portfolioRef.current = portfolio;
   }, [portfolio]);
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      assetLookupCacheRef.current.clear();
+    }
+  }, [isAuthenticated]);
+
   const mapServerItem = useCallback(
     (item) => ({
       id: item.id,
       symbol: item.symbol,
+      isin: item.isin || null,
       name: item.name,
       shares: item.shares,
       buyPrice: item.buy_price,
@@ -159,6 +167,70 @@ const Home = () => {
       lastSeenDate: item.last_seen_date || item.buy_date,
     }),
     []
+  );
+
+  const resolveAssetMetadata = useCallback(
+    async ({ name, symbol, isin }) => {
+      const cacheKeys = buildLookupCacheKeys({ name, symbol, isin });
+      for (const key of cacheKeys) {
+        if (key && assetLookupCacheRef.current.has(key)) {
+          return assetLookupCacheRef.current.get(key);
+        }
+      }
+
+      const query = (name || symbol || isin || "").trim();
+      if (!query) return null;
+
+      try {
+        const data = await authFetch(
+          `/api/dataset/timeseries/search?q=${encodeURIComponent(
+            query
+          )}&limit=10`
+        );
+        const results = data?.results || [];
+        const normalizedName = name?.trim().toLowerCase();
+        const normalizedSymbol = symbol?.trim().toUpperCase();
+        const normalizedIsin = isin?.trim().toUpperCase();
+
+        const matchByName =
+          normalizedName &&
+          results.find(
+            (item) =>
+              (item?.name || "").trim().toLowerCase() === normalizedName
+          );
+
+        const matchByIsin =
+          normalizedIsin &&
+          results.find(
+            (item) =>
+              (item?.isin || "").trim().toUpperCase() === normalizedIsin
+          );
+
+        const matchBySymbol =
+          normalizedSymbol &&
+          results.find(
+            (item) =>
+              (item?.symbol || "").trim().toUpperCase() === normalizedSymbol
+          );
+
+        const resolvedRaw =
+          matchByName || matchByIsin || matchBySymbol || results[0] || null;
+        const resolved = normalizeAssetResult(resolvedRaw);
+
+        if (resolved) {
+          buildLookupCacheKeys(resolved).forEach((key) => {
+            if (key) {
+              assetLookupCacheRef.current.set(key, resolved);
+            }
+          });
+        }
+        return resolved;
+      } catch (error) {
+        console.warn("Failed to resolve asset metadata:", error);
+        return null;
+      }
+    },
+    [authFetch]
   );
 
   useEffect(() => {
@@ -195,30 +267,57 @@ const Home = () => {
     return () => controller.abort();
   }, [authFetch, isAuthenticated, mapServerItem]);
 
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    if (!portfolioRef.current.length) return;
+useEffect(() => {
+  if (!isAuthenticated) return;
+  if (!portfolioRef.current.length) return;
 
-    const refreshPrices = async () => {
-      try {
-        const symbols = portfolioRef.current
-          .map((stock) => stock.symbol && stock.symbol.toUpperCase())
-          .filter(Boolean);
-        if (!symbols.length) return;
+  let cancelled = false;
 
-        const response = await fetch(STOCK_PRICE_API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ symbols }),
-        });
+  const refreshPrices = async () => {
+    try {
+      const lookupEntries = [];
+      for (const stock of portfolioRef.current) {
+        const metadata =
+            (await resolveAssetMetadata({
+              name: stock.name,
+              symbol: stock.symbol,
+              isin: stock.isin,
+            })) || null;
 
-        const data = await response.json();
-        if (!data.success) return;
+          const lookupKeyRaw =
+            metadata?.isin ||
+            metadata?.symbol ||
+            (stock.isin && stock.isin.toUpperCase()) ||
+            (stock.symbol && stock.symbol.toUpperCase());
 
-        const pendingUpdates = [];
-        setPortfolio((prevPortfolio) =>
+          if (!lookupKeyRaw) continue;
+          const lookupKey = lookupKeyRaw.toUpperCase();
+          lookupEntries.push({ id: stock.id, key: lookupKey });
+        }
+
+        const uniqueKeys = [
+          ...new Set(lookupEntries.map((entry) => entry.key)),
+        ];
+        if (!uniqueKeys.length) return;
+
+      const response = await fetch(STOCK_PRICE_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbols: uniqueKeys }),
+      });
+
+      const data = await response.json();
+      if (!data.success || cancelled) return;
+
+      const idToLookupKey = new Map();
+      lookupEntries.forEach(({ id, key }) => idToLookupKey.set(id, key));
+
+      const pendingUpdates = [];
+      setPortfolio((prevPortfolio) =>
           prevPortfolio.map((stock) => {
-            const updatedPrice = data.prices[stock.symbol];
+            const lookupKey = idToLookupKey.get(stock.id);
+            if (!lookupKey) return stock;
+            const updatedPrice = data.prices[lookupKey];
             if (updatedPrice === undefined || updatedPrice === null) {
               return stock;
             }
@@ -234,16 +333,21 @@ const Home = () => {
           }).catch((error) =>
             console.warn(`Failed to sync price for item ${id}`, error)
           );
-        });
-      } catch (error) {
+      });
+    } catch (error) {
+      if (!cancelled) {
         console.error("Failed to refresh prices:", error);
       }
-    };
+    }
+  };
 
-    refreshPrices();
-    const interval = setInterval(refreshPrices, 60 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [authFetch, isAuthenticated, portfolio.length]);
+  refreshPrices();
+  const interval = setInterval(refreshPrices, 60 * 60 * 1000);
+  return () => {
+    cancelled = true;
+    clearInterval(interval);
+  };
+}, [authFetch, isAuthenticated, portfolio.length, resolveAssetMetadata]);
 
   const totalValue = calculateTotalValue(portfolio);
   const totalPL = calculateTotalPL(portfolio);
@@ -303,6 +407,7 @@ const Home = () => {
 
   const handleAddStock = useCallback(async (stock) => {
     const buyPrice = Number(stock.buyPrice);
+    const normalizedBuyPrice = Number.isFinite(buyPrice) ? buyPrice : null;
     const hasCurrentPrice =
       stock.currentPrice !== undefined && stock.currentPrice !== null;
     const rawSymbol = stock.symbol?.toUpperCase();
@@ -312,21 +417,55 @@ const Home = () => {
       ? rawSymbol
       : null;
 
-    const displaySymbol = await resolveDisplaySymbol(rawSymbol, rawIsin);
-    const snapshotIdentifier = rawIsin || rawSymbol;
+    const assetMetadata =
+      (await resolveAssetMetadata({
+        name: stock.name,
+        symbol: rawSymbol,
+        isin: rawIsin,
+      })) || null;
+
+    const metadataSymbol = assetMetadata?.symbol;
+    const metadataIsin = assetMetadata?.isin;
+
+    const displaySymbol =
+      metadataSymbol || (await resolveDisplaySymbol(rawSymbol, rawIsin));
+    const snapshotIdentifier =
+      metadataIsin || metadataSymbol || rawIsin || rawSymbol;
     const snapshot = await fetchLatestSnapshot(snapshotIdentifier);
     const canonicalSymbol =
       snapshot?.symbol?.toUpperCase() ||
+      metadataSymbol ||
       displaySymbol ||
       rawSymbol ||
       snapshotIdentifier;
-    const resolvedName = snapshot?.name || stock.name;
-    const lastSeenPrice = snapshot?.price ?? (Number.isFinite(buyPrice) ? buyPrice : null);
-    const lastSeenDate = snapshot?.date
-      ? dayjs(snapshot.date).format("YYYY-MM-DD")
-      : stock.buyDate
+    const canonicalIsin =
+      snapshot?.isin?.toUpperCase() || metadataIsin || rawIsin;
+    const resolvedName =
+      snapshot?.name || assetMetadata?.name || stock.name;
+    const normalizedBuyDate = stock.buyDate
       ? dayjs(stock.buyDate).format("YYYY-MM-DD")
       : null;
+    const entrySource = stock.entrySource;
+    const purchaseMode = stock.purchaseMode;
+    const manualByPrice = entrySource === "manual" && purchaseMode === "price";
+    const manualByDate = entrySource === "manual" && purchaseMode === "date";
+
+    let lastSeenPrice = snapshot?.price ?? normalizedBuyPrice;
+    if ((manualByPrice || manualByDate) && normalizedBuyPrice !== null) {
+      lastSeenPrice = normalizedBuyPrice;
+    }
+
+    let lastSeenDate = null;
+    if (manualByPrice) {
+      lastSeenDate = null;
+    } else if (manualByDate && normalizedBuyDate) {
+      lastSeenDate = normalizedBuyDate;
+    } else if (snapshot?.date) {
+      lastSeenDate = dayjs(snapshot.date).format("YYYY-MM-DD");
+    } else if (normalizedBuyDate) {
+      lastSeenDate = normalizedBuyDate;
+    }
+
     const currentPrice = hasCurrentPrice
       ? Number(stock.currentPrice)
       : snapshot?.price ?? null;
@@ -348,11 +487,11 @@ const Home = () => {
     const newStock = {
       id: `local-${Date.now()}`, // unique id for React key
       symbol: canonicalSymbol,
-      isin: snapshot?.isin?.toUpperCase() || rawIsin,
+      isin: canonicalIsin || null,
       name: resolvedName,
       shares: Number(stock.shares),
-      buyPrice: buyPrice,
-      buyDate: stock.buyDate ? dayjs(stock.buyDate).format("YYYY-MM-DD") : null,
+      buyPrice: normalizedBuyPrice,
+      buyDate: normalizedBuyDate,
       currentPrice,
       isSynthetic: false,
       lastSeenPrice,
@@ -370,13 +509,16 @@ const Home = () => {
           newStock.currentPrice ?? merged.currentPrice ?? 0;
         merged.lastSeenPrice = newStock.lastSeenPrice ?? merged.lastSeenPrice;
         merged.lastSeenDate = newStock.lastSeenDate ?? merged.lastSeenDate;
+        merged.symbol = newStock.symbol || merged.symbol;
+        merged.name = newStock.name || merged.name;
+        merged.isin = newStock.isin || merged.isin;
         merged.isNew = true;
         next[existingIndex] = merged;
         return next;
       }
       return [...next, newStock];
     });
-  }, [resolveDisplaySymbol, fetchLatestSnapshot]);
+  }, [resolveAssetMetadata, resolveDisplaySymbol, fetchLatestSnapshot]);
 
   const handleRemoveStock = useCallback((id) => {
     setPortfolio((prev) => prev.filter((stock) => stock.id !== id));
@@ -648,6 +790,39 @@ const Home = () => {
 };
 
 export default Home;
+
+const buildLookupCacheKeys = ({ name, symbol, isin }) => {
+  const keys = [];
+  if (name && name.trim()) {
+    keys.push(`NAME:${name.trim().toLowerCase()}`);
+  }
+  if (symbol && symbol.trim()) {
+    keys.push(`SYM:${symbol.trim().toUpperCase()}`);
+  }
+  if (isin && isin.trim()) {
+    keys.push(`ISIN:${isin.trim().toUpperCase()}`);
+  }
+  return keys;
+};
+
+const normalizeAssetResult = (result) => {
+  if (!result) return null;
+  const sanitizedSymbol = result.symbol
+    ? result.symbol.trim().toUpperCase()
+    : "";
+  const sanitizedIsin = result.isin ? result.isin.trim().toUpperCase() : "";
+  const sanitizedName =
+    result.name?.trim() ||
+    result.assetName?.trim() ||
+    sanitizedSymbol ||
+    sanitizedIsin;
+
+  return {
+    symbol: sanitizedSymbol,
+    isin: sanitizedIsin,
+    name: sanitizedName,
+  };
+};
 
 const styles = {
   container: {

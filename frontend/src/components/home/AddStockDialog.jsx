@@ -310,6 +310,8 @@ const showToast = (message, severity = "success") => {
         buyPrice: resolvedBuyPrice,
         buyDate: formData.buyDate || null,
         currentPrice,
+        entrySource: "manual",
+        purchaseMode,
       });
 
       const baseMessage = `${symbol} has been added to your portfolio.`;
