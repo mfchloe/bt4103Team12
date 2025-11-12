@@ -1,22 +1,29 @@
 # backend/services/cluster_popularity_service.py
 
+import math
 import os
 from functools import lru_cache
+from typing import Optional
+
 import pandas as pd
 
+from models.forecast_sharpe_ratio import forecast_sharpe_ratio
 from services.dataset_time_series_service import DatasetTimeSeriesService
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+DATASETS_DIR = os.path.join(BASE_DIR, "datasets")
+PROCESSED_DATA_DIR = os.path.join(DATASETS_DIR, "processed_data")
+SHARPE_PREDICTIONS_PATH = os.path.join(PROCESSED_DATA_DIR, "predictions.csv")
+SHARPE_COVARIANCE_PATH = os.path.join(PROCESSED_DATA_DIR, "covariance.csv")
+SHARPE_CLOSE_PRICES_PATH = os.path.join(DATASETS_DIR, "close_prices.csv")
 
 CUSTOMER_INFO_PATH = os.path.join(
-    BASE_DIR,
-    "datasets",
+    DATASETS_DIR,
     "customer_information_engineered_kMeans.csv",
 )
 
 TX_PATH = os.path.join(
-    BASE_DIR,
-    "datasets",
+    DATASETS_DIR,
     "customer_transactions.csv",
 )
 
@@ -38,6 +45,30 @@ def _get_asset_display_info(isin: str) -> dict:
         return {}
 
     return info or {}
+
+
+@lru_cache(maxsize=4096)
+def _get_predicted_sharpe(isin: str) -> Optional[float]:
+    normalized = (isin or "").strip()
+    if not normalized:
+        return None
+
+    try:
+        value = forecast_sharpe_ratio(
+            normalized,
+            predictions_path=SHARPE_PREDICTIONS_PATH,
+            covariance_path=SHARPE_COVARIANCE_PATH,
+            close_prices_path=SHARPE_CLOSE_PRICES_PATH,
+        )
+    except Exception:
+        return None
+
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+
+    return value if math.isfinite(value) else None
 
 
 @lru_cache(maxsize=1)
@@ -97,15 +128,15 @@ def load_top_assets_by_cluster():
     for cluster_id, sub in grouped.groupby("cluster"):
         assets = []
         for _, row in sub.iterrows():
-          isin = str(row["ISIN"]).strip()
-          if not isin:
-              continue
-          assets.append(
-              {
-                  "symbol": isin,      # using ISIN as symbol for now
-                  "score": float(row["popularity_score"]),
-              }
-          )
+            isin = str(row["ISIN"]).strip()
+            if not isin:
+                continue
+            assets.append(
+                {
+                    "symbol": isin,      # using ISIN as symbol for now
+                    "score": float(row["popularity_score"]),
+                }
+            )
         # Keep more than 10 so we can filter out overlaps with portfolio later
         top_assets_by_cluster[int(cluster_id)] = assets[:100]
 
@@ -122,6 +153,9 @@ def get_top_assets_for_cluster(cluster_id: int, existing_portfolio, top_k: int =
 
     all_by_cluster = load_top_assets_by_cluster()
     candidates = all_by_cluster.get(int(cluster_id), [])
+
+    score_values = [asset["score"] for asset in candidates]
+    score_max = max(score_values) if score_values else 0.0
 
     recs = []
     rank = 0
@@ -140,11 +174,16 @@ def get_top_assets_for_cluster(cluster_id: int, existing_portfolio, top_k: int =
             else None
         )
 
+        similarity_raw = asset["score"] / score_max if score_max > 0 else 0.0
+        similarity_score = max(0.0, min(1.0, similarity_raw))
+
+        sharpe_value = _get_predicted_sharpe(symbol)
+
         recs.append([
             symbol,                 # keep ISIN as the identifier/symbol
             display_name or symbol, # show company/asset name when possible
-            0.0,                    # similarityScore (no model, so neutral)
-            0.0,                    # sharpeRatio placeholder
+            round(similarity_score, 4),
+            round(sharpe_value, 3) if sharpe_value is not None else 0.0,
         ])
 
     return recs
