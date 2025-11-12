@@ -15,6 +15,7 @@ import {
   CircularProgress,
   Chip,
   IconButton,
+  TextField,
 } from "@mui/material";
 import {
   TrendingUp,
@@ -40,6 +41,7 @@ const RecommendationsDialog = ({
     severity: "success",
   });
   const [selectedStocks, setSelectedStocks] = useState(new Set());
+  const [shareCounts, setShareCounts] = useState({});
 
   const transformedRecommendations = useMemo(() => {
     if (!recommendations || !Array.isArray(recommendations)) return [];
@@ -60,6 +62,16 @@ const RecommendationsDialog = ({
     );
   }, [transformedRecommendations, currentPortfolio]);
 
+  const handleShareChange = (symbol, value) => {
+    if (!/^\d*$/.test(value)) return;
+    setShareCounts((prev) => ({ ...prev, [symbol]: value }));
+  };
+
+  const getSharesForSymbol = (symbol) => {
+    const parsed = parseInt(shareCounts[symbol], 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  };
+
   const toggleSelectStock = (symbol) => {
     setSelectedStocks((prev) => {
       const newSet = new Set(prev);
@@ -67,16 +79,22 @@ const RecommendationsDialog = ({
       else newSet.add(symbol);
       return newSet;
     });
+    setShareCounts((prev) =>
+      prev[symbol] ? prev : { ...prev, [symbol]: "1" }
+    );
   };
 
   const handleAddSelected = async () => {
-    for (const symbol of selectedStocks) {
+    const symbolsToAdd = Array.from(selectedStocks);
+    if (symbolsToAdd.length === 0) return;
+
+    for (const symbol of symbolsToAdd) {
       const stock = filteredRecommendations.find((s) => s.symbol === symbol);
       if (stock) {
         await onAdd({
           symbol: stock.symbol,
           name: stock.name,
-          shares: 1,
+          shares: getSharesForSymbol(symbol),
           buyPrice: 0,
           buyDate: dayjs().format("YYYY-MM-DD"),
           currentPrice: 0,
@@ -85,8 +103,8 @@ const RecommendationsDialog = ({
     }
     setToast({
       open: true,
-      message: `${selectedStocks.size} asset${
-        selectedStocks.size > 1 ? "s" : ""
+      message: `${symbolsToAdd.length} asset${
+        symbolsToAdd.length > 1 ? "s" : ""
       } added to portfolio`,
       severity: "success",
     });
@@ -228,12 +246,31 @@ const RecommendationsDialog = ({
                           </Grid>
                         </Box>
 
-                        <IconButton
-                          onClick={() => toggleSelectStock(stock.symbol)}
-                          sx={{ color: selected ? GREEN : "default" }}
-                        >
-                          {selected ? <CheckCircle /> : <CheckCircleOutline />}
-                        </IconButton>
+                        <Box sx={styles.selectionColumn}>
+                          <IconButton
+                            onClick={() => toggleSelectStock(stock.symbol)}
+                            sx={{ color: selected ? GREEN : "default" }}
+                          >
+                            {selected ? (
+                              <CheckCircle />
+                            ) : (
+                              <CheckCircleOutline />
+                            )}
+                          </IconButton>
+                          {selected && (
+                            <TextField
+                              label="Shares"
+                              type="number"
+                              size="small"
+                              value={shareCounts[stock.symbol] ?? "1"}
+                              onChange={(e) =>
+                                handleShareChange(stock.symbol, e.target.value)
+                              }
+                              inputProps={{ min: 1 }}
+                              sx={{ width: 90 }}
+                            />
+                          )}
+                        </Box>
                       </Box>
                     </CardContent>
                   </Card>
@@ -293,4 +330,10 @@ const styles = {
   },
   cardHeader: { display: "flex", alignItems: "center", gap: 1, mb: 1 },
   addSelectedContainer: { display: "flex", justifyContent: "flex-end", mt: 2 },
+  selectionColumn: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 1,
+  },
 };
