@@ -25,6 +25,8 @@ import dayjs from "dayjs";
 import FormTextField from "../FormTextField";
 import { useAuth } from "../../context/AuthContext.jsx";
 
+const DEFAULT_DATASET_MONTH = dayjs("2022-11-01");
+
 const INITIAL_FORM_STATE = {
   symbol: "",
   name: "",
@@ -456,6 +458,7 @@ const showToast = (message, severity = "success") => {
                     onChange={handleBuyDateChange}
                     disableFuture
                     format="MM/DD/YYYY"
+                    defaultCalendarMonth={DEFAULT_DATASET_MONTH}
                     slotProps={{
                       textField: {
                         fullWidth: true,
