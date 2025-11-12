@@ -17,6 +17,7 @@ from models.stock_model import (
     StockSearchResponse,
     StockSearchResult,
     StockPriceResponse,
+    LatestSnapshotResponse,
 )
 from models.far_customers import FarTransaction
 from dependencies import get_db
@@ -80,6 +81,21 @@ async def get_latest_price(symbol: str):
         name=info.get("name") or info.get("symbol") or symbol.upper(),
         currentPrice=latest_price,
     )
+
+
+@router.get(
+    "/{symbol}/latest-snapshot",
+    response_model=LatestSnapshotResponse,
+    summary="Get dataset-backed latest price metadata for a symbol",
+)
+async def get_latest_snapshot(symbol: str):
+    snapshot = dataset_service.get_latest_snapshot_for_symbol(symbol)
+    if not snapshot:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Latest snapshot unavailable for {symbol}.",
+        )
+    return LatestSnapshotResponse(**snapshot)
 
 
 @router.get(

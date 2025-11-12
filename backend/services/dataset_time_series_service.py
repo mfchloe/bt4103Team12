@@ -379,6 +379,35 @@ class DatasetTimeSeriesService:
             return None
         return self._latest_price_for_isin(info.get("isin", ""))
 
+    def get_latest_snapshot_for_symbol(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Return latest price and date metadata for a dataset-backed symbol/ISIN."""
+        if not symbol:
+            return None
+
+        info = self.get_symbol_info(symbol)
+        if not info:
+            return None
+
+        isin = info.get("isin")
+        if not isin:
+            return None
+
+        price = self._latest_price_for_isin(isin)
+        last_date = self._isin_last_date.get(isin.strip())
+        if price is None or not last_date:
+            return None
+
+        name = info.get("name") or info.get("symbol") or symbol
+        canonical_symbol = info.get("symbol") or symbol.strip().upper()
+
+        return {
+            "symbol": canonical_symbol,
+            "name": name,
+            "isin": isin,
+            "price": float(price),
+            "date": last_date.isoformat(),
+        }
+
     def get_latest_prices_for_symbols(self, symbols: List[str]) -> Dict[str, Optional[float]]:
         prices: Dict[str, Optional[float]] = {}
         if not symbols:

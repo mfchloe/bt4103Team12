@@ -283,6 +283,24 @@ const Home = () => {
     [authFetch]
   );
 
+  const fetchLatestSnapshot = useCallback(
+    async (identifier) => {
+      if (!identifier) return null;
+      try {
+        const data = await authFetch(
+          `/api/dataset/timeseries/${encodeURIComponent(
+            identifier
+          )}/latest-snapshot`
+        );
+        return data || null;
+      } catch (error) {
+        console.warn("Failed to fetch latest snapshot:", error);
+        return null;
+      }
+    },
+    [authFetch]
+  );
+
   const handleAddStock = useCallback(async (stock) => {
     const buyPrice = Number(stock.buyPrice);
     const hasCurrentPrice =
@@ -295,27 +313,42 @@ const Home = () => {
       : null;
 
     const displaySymbol = await resolveDisplaySymbol(rawSymbol, rawIsin);
+    const snapshotIdentifier = rawIsin || rawSymbol;
+    const snapshot = await fetchLatestSnapshot(snapshotIdentifier);
+    const canonicalSymbol =
+      snapshot?.symbol?.toUpperCase() ||
+      displaySymbol ||
+      rawSymbol ||
+      snapshotIdentifier;
+    const resolvedName = snapshot?.name || stock.name;
+    const lastSeenPrice = snapshot?.price ?? (Number.isFinite(buyPrice) ? buyPrice : null);
+    const lastSeenDate = snapshot?.date
+      ? dayjs(snapshot.date).format("YYYY-MM-DD")
+      : stock.buyDate
+      ? dayjs(stock.buyDate).format("YYYY-MM-DD")
+      : null;
+    const currentPrice = hasCurrentPrice
+      ? Number(stock.currentPrice)
+      : snapshot?.price ?? null;
 
     // Create a new stock object locally
     const newStock = {
       id: `local-${Date.now()}`, // unique id for React key
-      symbol: displaySymbol,
-      isin: rawIsin,
-      name: stock.name,
+      symbol: canonicalSymbol,
+      isin: snapshot?.isin?.toUpperCase() || rawIsin,
+      name: resolvedName,
       shares: Number(stock.shares),
       buyPrice: buyPrice,
       buyDate: stock.buyDate ? dayjs(stock.buyDate).format("YYYY-MM-DD") : null,
-      currentPrice: hasCurrentPrice ? Number(stock.currentPrice) : null,
+      currentPrice,
       isSynthetic: false,
-      lastSeenPrice: Number.isFinite(buyPrice) ? buyPrice : null,
-      lastSeenDate: stock.buyDate
-        ? dayjs(stock.buyDate).format("YYYY-MM-DD")
-        : null,
+      lastSeenPrice,
+      lastSeenDate,
       isNew: true, // mark as new for highlighting
     };
 
     setPortfolio((prev) => [...prev, newStock]);
-  }, [resolveDisplaySymbol]);
+  }, [resolveDisplaySymbol, fetchLatestSnapshot]);
 
   const handleRemoveStock = useCallback((id) => {
     setPortfolio((prev) => prev.filter((stock) => stock.id !== id));
