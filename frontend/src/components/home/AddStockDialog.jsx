@@ -304,6 +304,7 @@ const showToast = (message, severity = "success") => {
 
       await onAdd({
         symbol,
+        isin: selectedStock?.isin,
         name: formData.name,
         shares: parseFloat(formData.shares),
         buyPrice: resolvedBuyPrice,

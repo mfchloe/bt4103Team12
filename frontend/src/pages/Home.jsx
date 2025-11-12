@@ -27,6 +27,8 @@ import { db } from "../../firebase.jsx";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 const STOCK_PRICE_API_URL = `${apiBaseUrl}/api/dataset/timeseries/batch`;
 
+const ISIN_REGEX = /^[A-Z0-9]{12}$/i;
+
 const Home = () => {
   const [portfolio, setPortfolio] = useState([]);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
@@ -248,15 +250,57 @@ const Home = () => {
   const totalReturn = calculateTotalReturn(portfolio);
   const sharpeRatio = calculateSharpeRatio(portfolio);
 
-  const handleAddStock = useCallback((stock) => {
+  const resolveDisplaySymbol = useCallback(
+    async (symbol, isin) => {
+      const identifier = (isin || symbol || "").trim();
+      if (!identifier) return "";
+      const upperIdentifier = identifier.toUpperCase();
+
+      if (!ISIN_REGEX.test(upperIdentifier)) {
+        return upperIdentifier;
+      }
+
+      try {
+        const data = await authFetch(
+          `/api/dataset/timeseries/search?q=${encodeURIComponent(
+            upperIdentifier
+          )}&limit=1`
+        );
+        const results = data?.results || [];
+        const match =
+          results.find(
+            (item) => item?.isin?.toUpperCase() === upperIdentifier
+          ) || results[0];
+        if (match?.symbol) {
+          return match.symbol.toUpperCase();
+        }
+      } catch (error) {
+        console.warn("Failed to resolve short symbol:", error);
+      }
+
+      return upperIdentifier;
+    },
+    [authFetch]
+  );
+
+  const handleAddStock = useCallback(async (stock) => {
     const buyPrice = Number(stock.buyPrice);
     const hasCurrentPrice =
       stock.currentPrice !== undefined && stock.currentPrice !== null;
+    const rawSymbol = stock.symbol?.toUpperCase();
+    const rawIsin = stock.isin
+      ? stock.isin.toUpperCase()
+      : ISIN_REGEX.test(rawSymbol || "")
+      ? rawSymbol
+      : null;
+
+    const displaySymbol = await resolveDisplaySymbol(rawSymbol, rawIsin);
 
     // Create a new stock object locally
     const newStock = {
       id: `local-${Date.now()}`, // unique id for React key
-      symbol: stock.symbol?.toUpperCase(),
+      symbol: displaySymbol,
+      isin: rawIsin,
       name: stock.name,
       shares: Number(stock.shares),
       buyPrice: buyPrice,
@@ -271,7 +315,7 @@ const Home = () => {
     };
 
     setPortfolio((prev) => [...prev, newStock]);
-  }, []);
+  }, [resolveDisplaySymbol]);
 
   const handleRemoveStock = useCallback((id) => {
     setPortfolio((prev) => prev.filter((stock) => stock.id !== id));

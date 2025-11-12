@@ -29,6 +29,7 @@ import cvxpy as cp
 
 
 DATASETS_DIR = Path(__file__).resolve().parent.parent / "datasets"
+PROCESSED_DATA_DIR = DATASETS_DIR / "processed_data"
 
 
 class MarkowitzOptimisationError(RuntimeError):
@@ -40,6 +41,9 @@ def _resolve_path(default_filename: str, override: Optional[Path | str]) -> Path
     Resolve dataset paths, falling back to the shared backend/datasets directory.
     """
     if override is None:
+        processed_candidate = PROCESSED_DATA_DIR / default_filename
+        if processed_candidate.exists():
+            return processed_candidate
         return DATASETS_DIR / default_filename
 
     resolved = Path(override).expanduser()
@@ -237,6 +241,10 @@ def optimize_portfolio_weights(
         raise MarkowitzOptimisationError("Failed to solve the optimisation problem.") from exc
 
     if problem.status not in {cp.OPTIMAL, cp.OPTIMAL_INACCURATE}:
+        if problem.status in {cp.INFEASIBLE, cp.INFEASIBLE_INACCURATE}:
+            raise MarkowitzOptimisationError(
+                "You are over optimistic, please try lower expected returns / higher risk tolerance."
+            )
         raise MarkowitzOptimisationError(f"Optimisation failed with status: {problem.status}")
 
     solution = np.asarray(weights.value, dtype=float).reshape(-1)
