@@ -97,9 +97,7 @@ const RecommendationsDialog = ({
       else newSet.add(key);
       return newSet;
     });
-    setShareCounts((prev) =>
-      prev[key] ? prev : { ...prev, [key]: "1" }
-    );
+    setShareCounts((prev) => (prev[key] ? prev : { ...prev, [key]: "1" }));
   };
 
   const handleObjectiveChange = (_, newValue) => {
@@ -181,16 +179,19 @@ const RecommendationsDialog = ({
 
     setAllocating(true);
     try {
-      const response = await fetch(`${apiBaseUrl}/api/recommendation/allocate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          isins: universe.map((rec) => rec.symbol),
-          investment_amount: amount,
-          target_return: usingTarget ? parsedConstraint : undefined,
-          max_risk: usingTarget ? undefined : parsedConstraint,
-        }),
-      });
+      const response = await fetch(
+        `${apiBaseUrl}/api/recommendation/allocate`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            isins: universe.map((rec) => rec.symbol),
+            investment_amount: amount,
+            target_return: usingTarget ? parsedConstraint : undefined,
+            max_risk: usingTarget ? undefined : parsedConstraint,
+          }),
+        }
+      );
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
@@ -262,7 +263,11 @@ const RecommendationsDialog = ({
               <Typography variant="subtitle1" fontWeight="600">
                 Portfolio Optimizer
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 0.5 }}
+              >
                 Allocate your investment across the recommended assets using the
                 Markowitz optimiser. Enter your total budget and either a target
                 return or a max risk tolerance.
@@ -302,7 +307,11 @@ const RecommendationsDialog = ({
                 <TextField
                   fullWidth
                   type="number"
-                  label={objectiveType === "target" ? "Target Return" : "Max Risk Tolerance"}
+                  label={
+                    objectiveType === "target"
+                      ? "Target Return"
+                      : "Max Risk Tolerance"
+                  }
                   placeholder={objectiveType === "target" ? "0.001" : "0.005"}
                   helperText={
                     objectiveType === "target"
@@ -413,7 +422,7 @@ const RecommendationsDialog = ({
                                 variant="body2"
                                 color="text.secondary"
                               >
-                                Similarity Score
+                                Score
                               </Typography>
                               <Typography variant="body1" fontWeight="600">
                                 {(stock.similarityScore * 100).toFixed(2)}%
@@ -472,7 +481,9 @@ const RecommendationsDialog = ({
                               label="Shares"
                               type="number"
                               size="small"
-                              value={shareCounts[normalizeKey(stock.symbol)] ?? "1"}
+                              value={
+                                shareCounts[normalizeKey(stock.symbol)] ?? "1"
+                              }
                               onChange={(e) =>
                                 handleShareChange(stock.symbol, e.target.value)
                               }
