@@ -484,7 +484,7 @@ def forecast_sharpe_ratio(
 
 def get_cluster(customerID):
     # returns a string, "whales" OR "cores" OR "browsers"
-    cluster_map = {0: "whales", 1: "cores", 2: "browsers"}
+    cluster_map = {0: "whales", 1: "browsers", 2: "cores"}
     row = customer_clusters_df.loc[
         customer_clusters_df['customerID'] == customerID, 'cluster'
     ]
