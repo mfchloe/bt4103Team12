@@ -299,6 +299,14 @@ const TimeSeries = () => {
     );
   }, [chartData]);
 
+  const chartDataMissingSharpe = useMemo(() => {
+    if (!chartData?.length) return false;
+    return chartData.some((series) => {
+      const value = Number(series?.predictedSharpe);
+      return !Number.isFinite(value);
+    });
+  }, [chartData]);
+
   const sharpeSummaries = useMemo(() => {
     if (!chartData?.length) return {};
 
@@ -426,7 +434,11 @@ const TimeSeries = () => {
       };
       const payloadSignature = JSON.stringify(payload);
 
-      if (lastRequestSignature === payloadSignature && chartData.length) {
+      if (
+        lastRequestSignature === payloadSignature &&
+        chartData.length &&
+        !chartDataMissingSharpe
+      ) {
         return;
       }
 
@@ -486,6 +498,7 @@ const TimeSeries = () => {
     startDateRaw,
     hasValidDate,
     chartData.length,
+    chartDataMissingSharpe,
     lastRequestSignature,
   ]);
 
