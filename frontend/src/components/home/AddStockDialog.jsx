@@ -25,6 +25,8 @@ import dayjs from "dayjs";
 import FormTextField from "../FormTextField";
 import { useAuth } from "../../context/AuthContext.jsx";
 
+const DEFAULT_DATASET_MONTH = dayjs("2022-11-01");
+
 const INITIAL_FORM_STATE = {
   symbol: "",
   name: "",
@@ -304,11 +306,14 @@ const showToast = (message, severity = "success") => {
 
       await onAdd({
         symbol,
+        isin: selectedStock?.isin,
         name: formData.name,
         shares: parseFloat(formData.shares),
         buyPrice: resolvedBuyPrice,
         buyDate: formData.buyDate || null,
         currentPrice,
+        entrySource: "manual",
+        purchaseMode,
       });
 
       const baseMessage = `${symbol} has been added to your portfolio.`;
@@ -453,6 +458,7 @@ const showToast = (message, severity = "success") => {
                     onChange={handleBuyDateChange}
                     disableFuture
                     format="MM/DD/YYYY"
+                    defaultCalendarMonth={DEFAULT_DATASET_MONTH}
                     slotProps={{
                       textField: {
                         fullWidth: true,

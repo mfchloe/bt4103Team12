@@ -13,7 +13,10 @@ import {
 } from "recharts";
 import { Box, Typography, Paper, Grid } from "@mui/material";
 import { GREEN, RED } from "../../constants/colors";
-import { formatCurrency } from "../../utils/mathHelpers";
+import {
+  calculateStockStats,
+  formatCurrency,
+} from "../../utils/mathHelpers";
 
 const COLORS = [
   "#305D9E",
@@ -87,23 +90,22 @@ const PortfolioPieChart = ({ data }) => {
       </Box>
 
       <Box sx={styles.legendBox}>
-        {chartData.map((entry, index) => (
-          <Box
-            key={entry.name}
-            sx={{
-              ...styles.legendItem,
-              mb: index === chartData.length - 1 ? 0 : 1.5,
-            }}
-          >
-            <Box sx={styles.legendItemTextBox}>
-              <Box sx={{ ...styles.legendDot, bgcolor: entry.color }} />
-              <Typography sx={styles.legendLabel}>{entry.name}</Typography>
+        <Box sx={styles.legendContent}>
+          {chartData.map((entry, index) => (
+            <Box
+              key={entry.name}
+              sx={{
+                ...styles.legendItem,
+                mb: index === chartData.length - 1 ? 0 : 1.5,
+              }}
+            >
+              <Box sx={styles.legendItemTextBox}>
+                <Box sx={{ ...styles.legendDot, bgcolor: entry.color }} />
+                <Typography sx={styles.legendLabel}>{entry.name}</Typography>
+              </Box>
             </Box>
-            {/* <Typography sx={styles.legendValue}>
-              {entry.percentage}% | {formatCurrency(entry.value)}
-            </Typography> */}
-          </Box>
-        ))}
+          ))}
+        </Box>
       </Box>
     </Box>
   );
@@ -143,33 +145,46 @@ const ReturnBarChart = ({ data }) => (
 
 // ---------- Main Section ----------
 const ChartsSection = ({ portfolio }) => {
-  const allocationData = portfolio.map((s) => ({
-    name: s.symbol,
-    value: s.shares * s.currentPrice,
-    percentage: 0,
-  }));
-  const totalValue = allocationData.reduce((sum, i) => sum + i.value, 0);
-  allocationData.forEach(
-    (i) => (i.percentage = ((i.value / totalValue) * 100).toFixed(1))
+  const filteredPortfolio = portfolio.filter(
+    (stock) => Number(stock.shares) > 0
   );
 
-  const plData = portfolio
-    .map((s) => ({
-      name: s.symbol,
-      pl: (s.currentPrice - s.buyPrice) * s.shares,
-      plPercent: (((s.currentPrice - s.buyPrice) / s.buyPrice) * 100).toFixed(
-        2
-      ),
+  const portfolioWithStats = filteredPortfolio.map((stock) => ({
+    stock,
+    stats: calculateStockStats(stock),
+  }));
+
+  const allocationData = portfolioWithStats.map(({ stock, stats }) => ({
+    name: stock.symbol,
+    value: Number.isFinite(stats.totalValue) ? stats.totalValue : 0,
+    percentage: 0,
+  }));
+  const totalValue = allocationData.reduce((sum, entry) => sum + entry.value, 0);
+  allocationData.forEach((entry) => {
+    entry.percentage = totalValue
+      ? ((entry.value / totalValue) * 100).toFixed(1)
+      : "0.0";
+  });
+
+  const plData = portfolioWithStats
+    .map(({ stock, stats }) => ({
+      name: stock.symbol,
+      pl: stats.pl,
+      plPercent: Number.isFinite(stats.returnPercent)
+        ? stats.returnPercent.toFixed(2)
+        : "-",
     }))
     .sort((a, b) => b.pl - a.pl);
 
-  const returnData = portfolio
-    .map((s) => ({
-      name: s.symbol,
-      return: parseFloat(
-        (((s.currentPrice - s.buyPrice) / s.buyPrice) * 100).toFixed(2)
-      ),
-    }))
+  const returnData = portfolioWithStats
+    .map(({ stock, stats }) => {
+      if (!Number.isFinite(stats.returnPercent)) return null;
+      return {
+        name: stock.symbol,
+        return: Number(stats.returnPercent.toFixed(2)),
+      };
+    })
+    .filter(Boolean)
     .sort((a, b) => b.return - a.return);
 
   return (
@@ -214,8 +229,27 @@ const styles = {
     minWidth: { xs: "100%" },
     maxHeight: 280,
     overflowY: "auto",
+    overflowX: "hidden",
     borderRadius: 2,
     p: 2,
+    direction: "rtl", // moves the scrollbar to the left
+    "&::-webkit-scrollbar": {
+      width: 8,
+    },
+    "&::-webkit-scrollbar-track": {
+      background: "#f1f1f1",
+      borderRadius: 8,
+    },
+    "&::-webkit-scrollbar-thumb": {
+      background: "#cbd5f5",
+      borderRadius: 8,
+    },
+    "&::-webkit-scrollbar-thumb:hover": {
+      background: "#94a3b8",
+    },
+  },
+  legendContent: {
+    direction: "ltr",
   },
   legendItem: {
     display: "flex",

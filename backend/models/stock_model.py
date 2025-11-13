@@ -73,6 +73,15 @@ class DatasetHistoricalSeriesResponse(BaseModel):
     success: bool = True
 
 
+class LatestSnapshotResponse(BaseModel):
+    symbol: str
+    name: str
+    isin: Optional[str] = None
+    price: float
+    date: str
+    success: bool = True
+
+
 class ErrorResponse(BaseModel):
     error: str
     success: bool = False

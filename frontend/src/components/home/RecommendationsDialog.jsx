@@ -15,6 +15,9 @@ import {
   CircularProgress,
   Chip,
   IconButton,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import {
   TrendingUp,
@@ -24,6 +27,7 @@ import {
 } from "@mui/icons-material";
 import dayjs from "dayjs";
 import { GREEN } from "../../constants/colors";
+import { apiBaseUrl } from "../../api/httpClient";
 
 const RecommendationsDialog = ({
   open,
@@ -40,6 +44,14 @@ const RecommendationsDialog = ({
     severity: "success",
   });
   const [selectedStocks, setSelectedStocks] = useState(new Set());
+  const [shareCounts, setShareCounts] = useState({});
+  const [investmentAmount, setInvestmentAmount] = useState("");
+  const [targetReturn, setTargetReturn] = useState("");
+  const [maxRisk, setMaxRisk] = useState("");
+  const [objectiveType, setObjectiveType] = useState("target");
+  const [allocating, setAllocating] = useState(false);
+  const [allocationError, setAllocationError] = useState("");
+  const normalizeKey = (symbol) => (symbol || "").toUpperCase();
 
   const transformedRecommendations = useMemo(() => {
     if (!recommendations || !Array.isArray(recommendations)) return [];
@@ -60,23 +72,53 @@ const RecommendationsDialog = ({
     );
   }, [transformedRecommendations, currentPortfolio]);
 
+  const handleShareChange = (symbol, value) => {
+    const key = normalizeKey(symbol);
+    if (!/^\d*$/.test(value)) return;
+    setShareCounts((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleWheelDisable = (event) => {
+    event.preventDefault();
+    event.target.blur();
+  };
+
+  const getSharesForSymbol = (symbol) => {
+    const key = normalizeKey(symbol);
+    const parsed = parseInt(shareCounts[key], 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  };
+
   const toggleSelectStock = (symbol) => {
+    const key = normalizeKey(symbol);
     setSelectedStocks((prev) => {
       const newSet = new Set(prev);
-      if (newSet.has(symbol)) newSet.delete(symbol);
-      else newSet.add(symbol);
+      if (newSet.has(key)) newSet.delete(key);
+      else newSet.add(key);
       return newSet;
     });
+    setShareCounts((prev) => (prev[key] ? prev : { ...prev, [key]: "1" }));
+  };
+
+  const handleObjectiveChange = (_, newValue) => {
+    if (!newValue) return;
+    setObjectiveType(newValue);
+    setAllocationError("");
   };
 
   const handleAddSelected = async () => {
-    for (const symbol of selectedStocks) {
-      const stock = filteredRecommendations.find((s) => s.symbol === symbol);
+    const symbolsToAdd = Array.from(selectedStocks);
+    if (symbolsToAdd.length === 0) return;
+
+    for (const symbol of symbolsToAdd) {
+      const stock = filteredRecommendations.find(
+        (s) => normalizeKey(s.symbol) === symbol
+      );
       if (stock) {
         await onAdd({
           symbol: stock.symbol,
           name: stock.name,
-          shares: 1,
+          shares: getSharesForSymbol(symbol),
           buyPrice: 0,
           buyDate: dayjs().format("YYYY-MM-DD"),
           currentPrice: 0,
@@ -85,13 +127,109 @@ const RecommendationsDialog = ({
     }
     setToast({
       open: true,
-      message: `${selectedStocks.size} asset${
-        selectedStocks.size > 1 ? "s" : ""
+      message: `${symbolsToAdd.length} asset${
+        symbolsToAdd.length > 1 ? "s" : ""
       } added to portfolio`,
       severity: "success",
     });
     setSelectedStocks(new Set());
     onClose();
+  };
+
+  const handleRecommendPortfolio = async () => {
+    setAllocationError("");
+    const amount = Number(investmentAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setAllocationError("Enter an investment amount greater than 0.");
+      return;
+    }
+
+    const usingTarget = objectiveType === "target";
+    const constraintValue = usingTarget ? targetReturn : maxRisk;
+    if (constraintValue === "") {
+      setAllocationError(
+        usingTarget
+          ? "Please provide a target return."
+          : "Please provide a max risk tolerance."
+      );
+      return;
+    }
+
+    const parsedConstraint = Number(constraintValue);
+    if (!Number.isFinite(parsedConstraint)) {
+      setAllocationError(
+        usingTarget
+          ? "Target return must be a valid number."
+          : "Max risk tolerance must be a valid number."
+      );
+      return;
+    }
+
+    const universe =
+      selectedStocks.size > 0
+        ? filteredRecommendations.filter((rec) =>
+            selectedStocks.has(normalizeKey(rec.symbol))
+          )
+        : filteredRecommendations;
+
+    if (universe.length === 0) {
+      setAllocationError("Select at least one recommendation to optimise.");
+      return;
+    }
+
+    setAllocating(true);
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/api/recommendation/allocate`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            isins: universe.map((rec) => rec.symbol),
+            investment_amount: amount,
+            target_return: usingTarget ? parsedConstraint : undefined,
+            max_risk: usingTarget ? undefined : parsedConstraint,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody?.detail || "Failed to optimise portfolio.");
+      }
+
+      const payload = await response.json();
+      const allocations = payload?.allocations || [];
+      if (!allocations.length) {
+        throw new Error("Optimiser did not return any allocations.");
+      }
+
+      const updatedShares = { ...shareCounts };
+      const updatedSelection = new Set(selectedStocks);
+      allocations.forEach((allocation) => {
+        const key = normalizeKey(allocation?.isin || allocation?.symbol);
+        if (!key) {
+          return;
+        }
+        const roundedShares = Math.max(0, Number(allocation.shares || 0));
+        updatedShares[key] = String(roundedShares);
+        if (roundedShares > 0) {
+          updatedSelection.add(key);
+        }
+      });
+
+      setShareCounts(updatedShares);
+      setSelectedStocks(updatedSelection);
+      setToast({
+        open: true,
+        message: "Suggested share counts generated.",
+        severity: "success",
+      });
+    } catch (err) {
+      setAllocationError(err.message || "Failed to optimise portfolio.");
+    } finally {
+      setAllocating(false);
+    }
   };
 
   const handleCloseToast = () => setToast({ ...toast, open: false });
@@ -121,6 +259,104 @@ const RecommendationsDialog = ({
 
         <DialogContent>
           <Box sx={styles.contentContainer}>
+            <Box sx={styles.optimizerBox}>
+              <Typography variant="subtitle1" fontWeight="600">
+                Portfolio Optimizer
+              </Typography>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 0.5 }}
+              >
+                Allocate your investment across the recommended assets using the
+                Markowitz optimiser. Enter your total budget and either a target
+                return or a max risk tolerance.
+              </Typography>
+
+              <Box sx={styles.optimizerFields}>
+                <TextField
+                  fullWidth
+                  label="Investment Amount"
+                  placeholder="10000"
+                  type="number"
+                  value={investmentAmount}
+                  onChange={(event) => {
+                    setInvestmentAmount(event.target.value);
+                    setAllocationError("");
+                  }}
+                  onWheel={handleWheelDisable}
+                  inputProps={{ min: "0", step: "any" }}
+                />
+
+                <Box sx={styles.objectiveRow}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Optimisation Objective
+                  </Typography>
+                  <ToggleButtonGroup
+                    exclusive
+                    size="small"
+                    value={objectiveType}
+                    onChange={handleObjectiveChange}
+                    sx={{ mt: 1 }}
+                  >
+                    <ToggleButton value="target">Target Return</ToggleButton>
+                    <ToggleButton value="risk">Max Risk</ToggleButton>
+                  </ToggleButtonGroup>
+                </Box>
+
+                <TextField
+                  fullWidth
+                  type="number"
+                  label={
+                    objectiveType === "target"
+                      ? "Target Return"
+                      : "Max Risk Tolerance"
+                  }
+                  placeholder={objectiveType === "target" ? "0.001" : "0.005"}
+                  helperText={
+                    objectiveType === "target"
+                      ? "Daily expected return"
+                      : "Daily standard deviation"
+                  }
+                  value={objectiveType === "target" ? targetReturn : maxRisk}
+                  onChange={(event) => {
+                    if (objectiveType === "target") {
+                      setTargetReturn(event.target.value);
+                    } else {
+                      setMaxRisk(event.target.value);
+                    }
+                    setAllocationError("");
+                  }}
+                  onWheel={handleWheelDisable}
+                  inputProps={{ step: "any" }}
+                />
+
+                <Box sx={styles.optimizerActions}>
+                  <Button
+                    variant="outlined"
+                    onClick={handleRecommendPortfolio}
+                    disabled={
+                      allocating ||
+                      loading ||
+                      filteredRecommendations.length === 0
+                    }
+                  >
+                    {allocating ? (
+                      <CircularProgress size={18} />
+                    ) : (
+                      "Recommend Portfolio"
+                    )}
+                  </Button>
+                </Box>
+              </Box>
+
+              {allocationError && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {allocationError}
+                </Alert>
+              )}
+            </Box>
+
             {selectedStocks.size > 0 && (
               <Box sx={styles.selectedHint}>
                 <Typography variant="body2" color="info.contrastText">
@@ -147,10 +383,11 @@ const RecommendationsDialog = ({
               </Typography>
             ) : (
               filteredRecommendations.map((stock, index) => {
-                const selected = selectedStocks.has(stock.symbol);
+                const key = normalizeKey(stock.symbol);
+                const selected = selectedStocks.has(key);
                 return (
                   <Card
-                    key={stock.symbol}
+                    key={key || stock.symbol || index}
                     variant="outlined"
                     sx={{
                       ...styles.card,
@@ -185,7 +422,7 @@ const RecommendationsDialog = ({
                                 variant="body2"
                                 color="text.secondary"
                               >
-                                Similarity Score
+                                Score
                               </Typography>
                               <Typography variant="body1" fontWeight="600">
                                 {(stock.similarityScore * 100).toFixed(2)}%
@@ -228,12 +465,34 @@ const RecommendationsDialog = ({
                           </Grid>
                         </Box>
 
-                        <IconButton
-                          onClick={() => toggleSelectStock(stock.symbol)}
-                          sx={{ color: selected ? GREEN : "default" }}
-                        >
-                          {selected ? <CheckCircle /> : <CheckCircleOutline />}
-                        </IconButton>
+                        <Box sx={styles.selectionColumn}>
+                          <IconButton
+                            onClick={() => toggleSelectStock(stock.symbol)}
+                            sx={{ color: selected ? GREEN : "default" }}
+                          >
+                            {selected ? (
+                              <CheckCircle />
+                            ) : (
+                              <CheckCircleOutline />
+                            )}
+                          </IconButton>
+                          {selected && (
+                            <TextField
+                              label="Shares"
+                              type="number"
+                              size="small"
+                              value={
+                                shareCounts[normalizeKey(stock.symbol)] ?? "1"
+                              }
+                              onChange={(e) =>
+                                handleShareChange(stock.symbol, e.target.value)
+                              }
+                              onWheel={handleWheelDisable}
+                              inputProps={{ min: 1 }}
+                              sx={{ width: 90 }}
+                            />
+                          )}
+                        </Box>
                       </Box>
                     </CardContent>
                   </Card>
@@ -277,6 +536,27 @@ const styles = {
   title: { fontSize: 20 },
   subtitle: { mt: 1 },
   contentContainer: { display: "flex", flexDirection: "column", gap: 2, mt: 2 },
+  optimizerBox: {
+    border: "1px solid",
+    borderColor: "divider",
+    borderRadius: 2,
+    p: 2,
+    bgcolor: "background.paper",
+  },
+  optimizerFields: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    mt: 2,
+  },
+  objectiveRow: {
+    display: "flex",
+    flexDirection: "column",
+  },
+  optimizerActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+  },
   selectedHint: {
     my: 1,
     p: 1,
@@ -293,4 +573,10 @@ const styles = {
   },
   cardHeader: { display: "flex", alignItems: "center", gap: 1, mb: 1 },
   addSelectedContainer: { display: "flex", justifyContent: "flex-end", mt: 2 },
+  selectionColumn: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 1,
+  },
 };

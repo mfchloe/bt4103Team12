@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+import argparse
 import os
-import pandas as pd
+from typing import Optional, Sequence
+
 import numpy as np
-
-
-from typing import Optional
-
+import pandas as pd
 
 
 def forecast_sharpe_ratio(
@@ -32,9 +31,25 @@ def forecast_sharpe_ratio(
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     datasets_dir = os.path.join(current_dir, "..", "datasets")
-    predictions_path = predictions_path or os.path.join(datasets_dir, "predictions.csv")
-    covariance_path = covariance_path or os.path.join(datasets_dir, "covariance.csv")
-    close_prices_path = close_prices_path or os.path.join(datasets_dir, "close_prices.csv")
+    processed_dir = os.path.join(datasets_dir, "processed_data")
+
+    def _default_path(filename: str, override: Optional[str]) -> str:
+        """
+        Resolve dataset files with backward-compatible fallbacks.
+        Prefer ``datasets/processed_data`` when the file exists there so the
+        service keeps working after data reshuffles.
+        """
+        if override:
+            return override
+
+        processed_candidate = os.path.join(processed_dir, filename)
+        if os.path.exists(processed_candidate):
+            return processed_candidate
+        return os.path.join(datasets_dir, filename)
+
+    predictions_path = _default_path("predictions.csv", predictions_path)
+    covariance_path = _default_path("covariance.csv", covariance_path)
+    close_prices_path = _default_path("close_prices.csv", close_prices_path)
 
     if not os.path.exists(predictions_path):
         raise FileNotFoundError(f"Predictions file not found at {predictions_path}.")
@@ -95,3 +110,43 @@ def forecast_sharpe_ratio(
 
 
 __all__ = ["forecast_sharpe_ratio"]
+
+
+def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Inspect the Sharpe ratio forecast for a single ISIN.",
+    )
+    parser.add_argument("isin", help="Target ISIN (e.g. US5949181045).")
+    parser.add_argument(
+        "--predictions",
+        help="Optional override for predictions.csv (defaults to backend/datasets[/processed_data]).",
+    )
+    parser.add_argument(
+        "--covariance",
+        help="Optional override for covariance.csv (defaults to backend/datasets[/processed_data]).",
+    )
+    parser.add_argument(
+        "--close-prices",
+        dest="close_prices",
+        help="Optional override for close_prices.csv.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> None:
+    args = _parse_args(argv)
+    try:
+        sharpe = forecast_sharpe_ratio(
+            args.isin,
+            predictions_path=args.predictions,
+            covariance_path=args.covariance,
+            close_prices_path=args.close_prices,
+        )
+    except Exception as exc:
+        raise SystemExit(f"Sharpe forecast failed: {exc}") from exc
+
+    print(f"{args.isin}: {sharpe:.6f}")
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()

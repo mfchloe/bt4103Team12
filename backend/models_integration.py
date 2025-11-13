@@ -484,7 +484,7 @@ def forecast_sharpe_ratio(
 
 def get_cluster(customerID):
     # returns a string, "whales" OR "cores" OR "browsers"
-    cluster_map = {0: "whales", 1: "cores", 2: "browsers"}
+    cluster_map = {0: "whales", 1: "browsers", 2: "cores"}
     row = customer_clusters_df.loc[
         customer_clusters_df['customerID'] == customerID, 'cluster'
     ]
@@ -661,7 +661,7 @@ def top_10_future_ranked(customerID, existing_portfolio):
         assetName = isin_to_name.get(isin, None)
         new_list.append([isin, assetName, score, sharpe]) # new_list = [[stock, score, sharpe], [stock, score, sharpe]...]
 
-    new_list.sort(key=lambda x: x[2], reverse=True) # sort by sharpe descending
+    new_list.sort(key=lambda x: x[3], reverse=True) # sort by sharpe descending
     print(new_list)
     return new_list
 
