@@ -17,6 +17,13 @@ import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import { DonutChart } from "./DonutChart";
 import { CategoryBarCard } from "./CategoryBarCard";
 
+// to present the actual cluster names instead of numbers
+const clusterMap: Record<number, string> = {
+  0: "Whales",
+  1: "Cores",
+  2: "Browsers",
+};
+
 interface FilterChartsPanelProps {
   filters: any;
   setFilters: (filters: any) => void;
@@ -109,12 +116,24 @@ export const FilterChartsPanel = ({
 
           <DonutChart
             title=""
-            data={Object.entries(data.clusterCounts).map(([name, value]) => ({
-              label: name,
+            data={Object.entries(data.clusterCounts).map(([key, value]) => ({
+              label: clusterMap[Number(key)] ?? key, // display mapped label
               value: Number(value),
             }))}
-            onSelect={(val) => toggleFilterValue("cluster", val)}
-            selected={filters.cluster}
+            onSelect={(label) => {
+              // convert back to numeric key for internal filter state
+              const clusterKey = Object.entries(clusterMap).find(
+                ([, v]) => v === label
+              )?.[0];
+              if (clusterKey !== undefined) {
+                toggleFilterValue("cluster", clusterKey);
+              }
+            }}
+            selected={
+              filters.cluster?.map(
+                (c: string | number) => clusterMap[Number(c)]
+              ) ?? []
+            }
           />
 
           {/* Instructional hint */}
