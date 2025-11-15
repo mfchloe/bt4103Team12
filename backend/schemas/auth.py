@@ -25,13 +25,13 @@ class FarCustomerLoginRequest(BaseModel):
 class UserOut(BaseModel):
   model_config = ConfigDict(from_attributes=True)
 
-  id: int
-  email: EmailStr
+  id: str
+  email: Optional[EmailStr] = None
   full_name: Optional[str]
-  provider: str
+  provider: Optional[str]
   picture_url: Optional[str]
-  created_at: datetime
-  updated_at: datetime
+  created_at: Optional[datetime]
+  updated_at: Optional[datetime]
 
 
 class TokenPair(BaseModel):

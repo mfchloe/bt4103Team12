@@ -2,9 +2,8 @@ import logging
 from datetime import date, datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+import pandas as pd
+from fastapi import APIRouter, HTTPException, Query, status
 
 from models.stock_model import (
     BatchStockPriceRequest,
@@ -19,9 +18,8 @@ from models.stock_model import (
     StockPriceResponse,
     LatestSnapshotResponse,
 )
-from models.far_customers import FarTransaction
-from dependencies import get_db
 from services.dataset_time_series_service import DatasetTimeSeriesService
+from services import far_service
 from schemas import DatasetRecommendationsResponse, DatasetRecommendationItem
 
 logger = logging.getLogger(__name__)
@@ -233,41 +231,54 @@ async def get_historical_series(request: DatasetHistoricalSeriesRequest):
 )
 def get_dataset_recommendations(
     limit: int = Query(4, ge=1, le=20),
-    db: Session = Depends(get_db),
 ):
     try:
+        dfs = far_service.load_dataframes()
+        tx_df = dfs.get("transactions")
+        if tx_df is None or tx_df.empty:
+            return DatasetRecommendationsResponse(items=[])
+        if "ISIN" not in tx_df.columns:
+            return DatasetRecommendationsResponse(items=[])
+
+        working = tx_df.copy()
+        working = working[working["ISIN"].notna()]
+        if working.empty:
+            return DatasetRecommendationsResponse(items=[])
+
+        if "totalValue" in working.columns:
+            working["totalValue"] = pd.to_numeric(working["totalValue"], errors="coerce")
+        else:
+            working["totalValue"] = pd.to_numeric(working.get("value"), errors="coerce")
+        if "units" in working.columns:
+            working["units"] = pd.to_numeric(working["units"], errors="coerce")
+        else:
+            working["units"] = pd.to_numeric(working.get("quantity"), errors="coerce")
+
         aggregates = (
-            db.query(
-                FarTransaction.symbol.label("isin"),
-                func.sum(FarTransaction.total_value).label("total_value"),
-                func.sum(FarTransaction.shares).label("total_units"),
-            )
-            .filter(FarTransaction.symbol.isnot(None))
-            .group_by(FarTransaction.symbol)
-            .order_by(func.sum(FarTransaction.total_value).desc())
-            .limit(limit * 2)
-            .all()
+            working.groupby("ISIN")
+            .agg(total_value=("totalValue", "sum"), total_units=("units", "sum"))
+            .reset_index()
+            .sort_values("total_value", ascending=False)
         )
 
         items: List[DatasetRecommendationItem] = []
         seen_symbols = set()
 
-        for row in aggregates:
-            asset = dataset_service.get_asset_info_by_isin(row.isin)
+        for _, row in aggregates.iterrows():
+            isin = row["ISIN"]
+            asset = dataset_service.get_asset_info_by_isin(isin)
             if not asset:
                 continue
-
-            symbol = asset["symbol"].upper()
-            if symbol in seen_symbols:
+            symbol = (asset.get("symbol") or "").upper()
+            if not symbol or symbol in seen_symbols:
                 continue
 
             latest_price = dataset_service.get_latest_price_for_symbol(symbol)
-
             items.append(
                 DatasetRecommendationItem(
                     symbol=symbol,
                     name=asset.get("name") or symbol,
-                    isin=asset["isin"],
+                    isin=asset.get("isin") or isin,
                     latestPrice=latest_price,
                     totalValue=float(row.total_value or 0),
                     totalUnits=float(row.total_units or 0),

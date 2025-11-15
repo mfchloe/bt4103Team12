@@ -7,11 +7,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
   """Application configuration loaded from environment variables."""
 
-  database_url: str = Field(
-    default="sqlite:///./app.db",
-    env="DATABASE_URL",
-    description="SQLAlchemy compatible database URL.",
-  )
   secret_key: str = Field(
     default="change-me-secret-key",
     env="SECRET_KEY",
@@ -36,6 +31,31 @@ class Settings(BaseSettings):
     default="",
     env="APPLE_CLIENT_ID",
     description="Service ID configured for Sign in with Apple on the web.",
+  )
+  firebase_project_id: str = Field(
+    default="",
+    env="FIREBASE_PROJECT_ID",
+    description="Firebase project ID for admin SDK.",
+  )
+  firebase_credentials_file: str = Field(
+    default="",
+    env="FIREBASE_CREDENTIALS_FILE",
+    description="Path to Firebase service account JSON.",
+  )
+  firebase_api_key: str = Field(
+    default="",
+    env="FIREBASE_API_KEY",
+    description="Web API key used for Identity Toolkit calls.",
+  )
+  firestore_users_collection: str = Field(
+    default="users",
+    env="FIRESTORE_USERS_COLLECTION",
+    description="Firestore collection storing user documents.",
+  )
+  firestore_portfolio_collection: str = Field(
+    default="portfolio",
+    env="FIRESTORE_PORTFOLIO_COLLECTION",
+    description="Sub-collection name under each user for portfolio items.",
   )
 
   model_config = SettingsConfigDict(

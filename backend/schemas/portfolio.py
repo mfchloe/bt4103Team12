@@ -28,7 +28,7 @@ class PortfolioItemOut(PortfolioItemBase):
   model_config = ConfigDict(from_attributes=True)
 
   shares: float = Field(..., ge=0)
-  id: int
+  id: str
   created_at: datetime
   updated_at: datetime
   total_buy_value: Optional[float] = None
@@ -38,3 +38,4 @@ class PortfolioItemOut(PortfolioItemBase):
   synthetic: Optional[bool] = None
   last_seen_price: Optional[float] = None
   last_seen_date: Optional[str] = None
+  isin: Optional[str] = None

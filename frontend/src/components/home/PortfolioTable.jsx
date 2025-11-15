@@ -17,6 +17,8 @@ import CustomTable from "../CustomTable";
 
 const POSITIVE_COLOR = "#16a34a";
 const NEGATIVE_COLOR = "#dc2626";
+const NEW_STOCK_BG = "#e0ecff";
+const NEW_STOCK_ACCENT = "#2563eb";
 
 const TABLE_HEADERS = [
   { label: "Symbol", align: "left" },
@@ -55,7 +57,7 @@ const StockRow = ({ stock, onRemove }) => {
     <TableRow
       sx={{
         ...styles.tableRow,
-        bgcolor: stock.isNew ? "#e6f4ea" : "inherit", // light green background if new
+        bgcolor: stock.isNew ? NEW_STOCK_BG : "inherit", // blue highlight for freshly added stocks
       }}
     >
       <TableCell sx={styles.symbolCell}>
@@ -66,7 +68,7 @@ const StockRow = ({ stock, onRemove }) => {
               width: 8,
               height: 8,
               borderRadius: "50%",
-              backgroundColor: "#16a34a",
+              backgroundColor: stock.isNew ? NEW_STOCK_ACCENT : "#16a34a",
               marginRight: 6,
             }}
           />

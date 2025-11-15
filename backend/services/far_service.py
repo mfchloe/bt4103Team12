@@ -115,6 +115,21 @@ def load_dataframes() -> Dict[str, pd.DataFrame]:
 
     return dfs
 
+
+def customer_exists(customer_id: str) -> bool:
+    """Return True if the FAR dataset contains the given customer."""
+    if not customer_id:
+        return False
+    dfs = load_dataframes()
+    cust_df = dfs.get("customers")
+    if cust_df is None or cust_df.empty or "customerID" not in cust_df.columns:
+        return False
+    normalized = str(customer_id).strip()
+    try:
+        return normalized in set(cust_df["customerID"].astype(str))
+    except Exception:
+        return False
+
 def get_filtered_transactions(filters: dict) -> pd.DataFrame:
     """
     Returns transactions filtered by customer filters,
