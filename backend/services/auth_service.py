@@ -1,199 +1,173 @@
-import json
 from datetime import datetime
-from functools import lru_cache
-from typing import Optional, Tuple
+from typing import Any, Dict
 
 import httpx
-import jwt
 from fastapi import HTTPException, status
-from google.auth.transport import requests as google_requests
-from google.oauth2 import id_token as google_id_token
-from sqlalchemy.orm import Session
 
 from core.config import settings
-from core.security import create_access_token, create_refresh_token, hash_password, verify_password
-from models import AuthProvider, User
-from schemas import LoginRequest, RegisterRequest
+from core.firebase_app import (
+  get_firebase_user,
+  set_firebase_user_display_name,
+)
+from core.security import create_access_token
+from schemas import (
+  LoginRequest,
+  RegisterRequest,
+  SocialLoginRequest,
+  TokenResponse,
+  UserOut,
+)
 
-APPLE_KEYS_URL = "https://appleid.apple.com/auth/keys"
+IDENTITY_TOOLKIT_BASE = "https://identitytoolkit.googleapis.com/v1"
+SECURE_TOKEN_BASE = "https://securetoken.googleapis.com/v1"
 
 
-def _get_user_by_email(db: Session, email: str) -> Optional[User]:
-  return db.query(User).filter(User.email == email).first()
+def _require_api_key() -> str:
+  if not settings.firebase_api_key:
+    raise HTTPException(
+      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+      detail="Firebase API key is not configured.",
+    )
+  return settings.firebase_api_key
 
 
-def _get_user_by_provider(db: Session, provider: AuthProvider, provider_sub: str) -> Optional[User]:
-  return db.query(User).filter(User.provider == provider, User.provider_sub == provider_sub).first()
+def _post_json(url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+  try:
+    response = httpx.post(url, json=payload, timeout=10.0)
+    response.raise_for_status()
+    return response.json()
+  except httpx.HTTPStatusError as exc:
+    detail = exc.response.json().get("error", {}).get("message", "Firebase authentication failed")
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
+  except httpx.HTTPError as exc:
+    raise HTTPException(
+      status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+      detail="Unable to reach Firebase authentication service.",
+    ) from exc
 
 
-def register_user(db: Session, payload: RegisterRequest) -> User:
-  existing_user = _get_user_by_email(db, payload.email)
-  if existing_user:
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+def _call_identity_toolkit(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+  api_key = _require_api_key()
+  url = f"{IDENTITY_TOOLKIT_BASE}/{path}?key={api_key}"
+  return _post_json(url, payload)
 
-  user = User(
-    email=payload.email,
-    full_name=payload.full_name,
-    password_hash=hash_password(payload.password),
-    provider=AuthProvider.local,
+
+def _call_secure_token(payload: Dict[str, Any]) -> Dict[str, Any]:
+  api_key = _require_api_key()
+  url = f"{SECURE_TOKEN_BASE}/token?key={api_key}"
+  return _post_json(url, payload)
+
+
+def _build_user_out(uid: str) -> UserOut:
+  record = get_firebase_user(uid)
+  metadata = record.user_metadata
+  created_at = (
+    datetime.fromtimestamp(metadata.creation_timestamp / 1000.0) if metadata.creation_timestamp else None
   )
-  db.add(user)
-  db.commit()
-  db.refresh(user)
-  return user
+  updated_at = (
+    datetime.fromtimestamp(metadata.last_sign_in_timestamp / 1000.0) if metadata.last_sign_in_timestamp else None
+  )
+  return UserOut(
+    id=record.uid,
+    email=record.email or "",
+    full_name=record.display_name,
+    provider=record.provider_id,
+    picture_url=record.photo_url,
+    created_at=created_at,
+    updated_at=updated_at,
+  )
 
 
-def authenticate_user(db: Session, payload: LoginRequest) -> User:
-  user = _get_user_by_email(db, payload.email)
-  if not user or not user.password_hash or not verify_password(payload.password, user.password_hash):
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
-  return user
+def _make_token_response(payload: Dict[str, Any]) -> TokenResponse:
+  uid = payload.get("localId") or payload.get("user_id")
+  if not uid:
+    raise HTTPException(
+      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+      detail="Firebase response missing user id.",
+    )
+  user = _build_user_out(uid)
+  access = payload.get("idToken") or payload.get("id_token")
+  refresh = payload.get("refreshToken") or payload.get("refresh_token")
+  if not access or not refresh:
+    raise HTTPException(
+      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+      detail="Firebase response missing authentication tokens.",
+    )
+  return TokenResponse(access_token=access, refresh_token=refresh, user=user)
 
 
-def issue_token_pair(user: User) -> Tuple[str, str]:
-  subject = str(user.id)
-  claims = {"provider": user.provider.value}
-  access = create_access_token(subject, additional_claims=claims)
-  refresh = create_refresh_token(subject, additional_claims=claims)
-  return access, refresh
+def register_user(payload: RegisterRequest) -> TokenResponse:
+  response = _call_identity_toolkit(
+    "accounts:signUp",
+    {
+      "email": payload.email,
+      "password": payload.password,
+      "returnSecureToken": True,
+    },
+  )
+
+  full_name = payload.full_name
+  if full_name:
+    try:
+      set_firebase_user_display_name(response["localId"], full_name)
+    except Exception:
+      # Fail open �?display name can be updated later.
+      pass
+
+  return _make_token_response(response)
+
+
+def authenticate_user(payload: LoginRequest) -> TokenResponse:
+  response = _call_identity_toolkit(
+    "accounts:signInWithPassword",
+    {
+      "email": payload.email,
+      "password": payload.password,
+      "returnSecureToken": True,
+    },
+  )
+  return _make_token_response(response)
+
+
+def social_login_google(payload: SocialLoginRequest) -> TokenResponse:
+  response = _call_identity_toolkit(
+    "accounts:signInWithIdp",
+    {
+      "postBody": f"id_token={payload.id_token}&providerId=google.com",
+      "requestUri": "https://localhost",
+      "returnSecureToken": True,
+      "returnIdpCredential": True,
+    },
+  )
+  return _make_token_response(response)
+
+
+def social_login_apple(payload: SocialLoginRequest) -> TokenResponse:
+  response = _call_identity_toolkit(
+    "accounts:signInWithIdp",
+    {
+      "postBody": f"id_token={payload.id_token}&providerId=apple.com",
+      "requestUri": "https://localhost",
+      "returnSecureToken": True,
+      "returnIdpCredential": True,
+    },
+  )
+  return _make_token_response(response)
+
+
+def refresh_firebase_tokens(refresh_token: str) -> TokenResponse:
+  response = _call_secure_token(
+    {
+      "grant_type": "refresh_token",
+      "refresh_token": refresh_token,
+    },
+  )
+  return _make_token_response(response)
 
 
 def issue_far_customer_token(customer_id: str) -> str:
   claims = {
     "mode": "far_customer",
-    "customer_id": customer_id
+    "customer_id": customer_id,
   }
-  access_token = create_access_token(
-    subject = customer_id,
-    additional_claims = claims
-  )
-  return access_token
-
-def _verify_google_token(id_token: str) -> dict:
-  if not settings.google_client_id:
-    raise HTTPException(
-      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-      detail="Google authentication not configured",
-    )
-  try:
-    request = google_requests.Request()
-    info = google_id_token.verify_oauth2_token(id_token, request, settings.google_client_id)
-    if info.get("aud") != settings.google_client_id:
-      raise ValueError("Token audience mismatch")
-    return info
-  except ValueError as exc:
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google token") from exc
-
-
-@lru_cache(maxsize=1)
-def _fetch_apple_keys() -> list:
-  with httpx.Client(timeout=5.0) as client:
-    response = client.get(APPLE_KEYS_URL)
-    response.raise_for_status()
-    payload = response.json()
-    return payload["keys"]
-
-
-def _get_apple_public_key(kid: str) -> dict:
-  keys = _fetch_apple_keys()
-  match = next((key for key in keys if key["kid"] == kid), None)
-  if match:
-    return match
-  # If not found, refresh cache once
-  _fetch_apple_keys.cache_clear()  # type: ignore[attr-defined]
-  keys = _fetch_apple_keys()
-  match = next((key for key in keys if key["kid"] == kid), None)
-  if not match:
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Apple public key not found")
-  return match
-
-
-def _verify_apple_token(id_token: str) -> dict:
-  if not settings.apple_client_id:
-    raise HTTPException(
-      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-      detail="Apple authentication not configured",
-    )
-  try:
-    header = jwt.get_unverified_header(id_token)
-    key_dict = _get_apple_public_key(header["kid"])
-    public_key = jwt.algorithms.RSAAlgorithm.from_jwk(json.dumps(key_dict))
-    claims = jwt.decode(
-      id_token,
-      public_key,
-      algorithms=["RS256"],
-      audience=settings.apple_client_id,
-      issuer="https://appleid.apple.com",
-    )
-    return claims
-  except (jwt.PyJWTError, KeyError) as exc:
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Apple token") from exc
-
-
-def social_login_google(db: Session, id_token: str) -> User:
-  info = _verify_google_token(id_token)
-  email = info.get("email")
-  if not email:
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google token missing email")
-
-  user = _get_user_by_provider(db, AuthProvider.google, info["sub"])
-  if user is None:
-    user = _get_user_by_email(db, email)
-    if user is None:
-      user = User(
-        email=email,
-        full_name=info.get("name"),
-        provider=AuthProvider.google,
-        provider_sub=info.get("sub"),
-        picture_url=info.get("picture"),
-      )
-      db.add(user)
-    else:
-      # Existing local account - link to Google
-      user.provider = AuthProvider.google
-      user.provider_sub = info.get("sub")
-      user.picture_url = info.get("picture")
-
-  user.updated_at = datetime.utcnow()
-  db.commit()
-  db.refresh(user)
-  return user
-
-
-def social_login_apple(db: Session, id_token: str) -> User:
-  claims = _verify_apple_token(id_token)
-  email = claims.get("email")
-  subject = claims.get("sub")
-  if not subject:
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Apple token missing subject")
-
-  user = _get_user_by_provider(db, AuthProvider.apple, subject)
-  if user is None:
-    if not email:
-      raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Apple token missing email")
-    user = _get_user_by_email(db, email)
-    if user is None:
-      user = User(
-        email=email,
-        full_name=claims.get("name"),
-        provider=AuthProvider.apple,
-        provider_sub=subject,
-      )
-      db.add(user)
-    else:
-      user.provider = AuthProvider.apple
-      user.provider_sub = subject
-
-  user.updated_at = datetime.utcnow()
-  db.commit()
-  db.refresh(user)
-  return user
-
-
-def update_user_password(db: Session, user: User, new_password: str) -> User:
-  user.password_hash = hash_password(new_password)
-  user.updated_at = datetime.utcnow()
-  db.commit()
-  db.refresh(user)
-  return user
-
+  return create_access_token(subject=customer_id, additional_claims=claims)

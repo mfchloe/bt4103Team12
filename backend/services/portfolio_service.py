@@ -4,9 +4,9 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
 
-from models import PortfolioItem
+from core.config import settings
+from core.firebase_app import get_firestore_client
 from schemas import PortfolioItemCreate, PortfolioItemUpdate
 from services import far_service
 from services.dataset_time_series_service import DatasetTimeSeriesService
@@ -14,19 +14,63 @@ from services.dataset_time_series_service import DatasetTimeSeriesService
 dataset_service = DatasetTimeSeriesService()
 
 
-def _owner_fields(actor) -> dict:
-    if actor.mode == "app":
-        return {
-            "owner_type": "app",
-            "owner_key": str(actor.id),  # actor.id is numeric user.id
-        }
-    elif actor.mode == "far_customer":
-        return {
-            "owner_type": "far_customer",
-            "owner_key": actor.customer_id,
-        }
+def _portfolio_collection(actor):
+    if actor.mode != "app":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Portfolio operations are available only for Firebase users.",
+        )
+    client = get_firestore_client()
+    return (
+        client.collection(settings.firestore_users_collection)
+        .document(actor.id)
+        .collection(settings.firestore_portfolio_collection)
+    )
+
+
+def _deserialize_firestore_item(doc_id: str, data: dict) -> dict:
+    created_at = data.get("created_at")
+    updated_at = data.get("updated_at")
+    buy_date_value = data.get("buy_date")
+    if isinstance(buy_date_value, str):
+        try:
+            buy_date = datetime.fromisoformat(buy_date_value).date()
+        except ValueError:
+            buy_date = None
     else:
-        raise ValueError(f"Unknown actor mode {actor.mode}")
+        buy_date = buy_date_value
+
+    return {
+        "id": doc_id,
+        "symbol": data.get("symbol"),
+        "name": data.get("name"),
+        "shares": float(data.get("shares", 0.0)),
+        "buy_price": float(data.get("buy_price", 0.0)),
+        "buy_date": buy_date,
+        "current_price": data.get("current_price"),
+        "created_at": created_at,
+        "updated_at": updated_at,
+        "total_buy_value": data.get("total_buy_value"),
+        "total_sell_value": data.get("total_sell_value"),
+        "realized_pl": data.get("realized_pl"),
+        "remaining_cost": data.get("remaining_cost"),
+        "synthetic": False,
+        "last_seen_price": data.get("last_seen_price"),
+        "last_seen_date": data.get("last_seen_date"),
+        "isin": data.get("isin"),
+    }
+
+
+def _get_firestore_item(actor, item_id: str):
+    collection = _portfolio_collection(actor)
+    doc_ref = collection.document(str(item_id))
+    snapshot = doc_ref.get()
+    if not snapshot.exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Portfolio item not found",
+        )
+    return doc_ref, snapshot.to_dict()
 
 
 def _parse_timestamp(value) -> Optional[datetime]:
@@ -55,15 +99,16 @@ def _parse_timestamp(value) -> Optional[datetime]:
   return None
 
 
-def _make_synthetic_id(key: str) -> int:
+def _make_synthetic_id(key: str) -> str:
+  """Return a deterministic synthetic ID that is always a string for schema compatibility."""
   try:
     digest = hashlib.sha1(key.encode("utf-8")).hexdigest()
-    return -int(digest[:8], 16)
+    return f"synthetic_{digest[:16]}"
   except Exception:
-    return -1
+    return f"synthetic_{abs(hash(key))}"
 
 
-def _list_far_customer_portfolio(db: Session, customer_id: str) -> List[Dict]:
+def _list_far_customer_portfolio(customer_id: str) -> List[Dict]:
   dfs = far_service.load_dataframes()
   tx_df = dfs.get("transactions")
 
@@ -230,89 +275,73 @@ def _list_far_customer_portfolio(db: Session, customer_id: str) -> List[Dict]:
   return items
 
 
-def list_portfolio_items(db: Session, actor) -> List[PortfolioItem]:
+def list_portfolio_items(actor) -> List[Dict]:
   if actor.mode == "far_customer":
-    return _list_far_customer_portfolio(db, actor.customer_id)
+    return _list_far_customer_portfolio(actor.customer_id)
 
-  owner = _owner_fields(actor)
-  return (
-    db.query(PortfolioItem)
-    .filter(
-      PortfolioItem.owner_type == owner["owner_type"],
-      PortfolioItem.owner_key == owner["owner_key"])
-    .order_by(PortfolioItem.created_at.asc())
-    .all()
-  )
+  collection = _portfolio_collection(actor)
+  snapshots = collection.order_by("created_at").stream()
+  items: List[Dict] = []
+  for doc in snapshots:
+    data = doc.to_dict() or {}
+    items.append(_deserialize_firestore_item(doc.id, data))
+  return items
 
 
-def create_portfolio_item(db: Session, actor, data: PortfolioItemCreate) -> PortfolioItem:
-  owner = _owner_fields(actor)
+def create_portfolio_item(actor, data: PortfolioItemCreate):
+  if actor.mode != "app":
+    raise HTTPException(
+      status_code=status.HTTP_403_FORBIDDEN,
+      detail="Portfolio operations are unavailable for dataset accounts.",
+    )
+
+  collection = _portfolio_collection(actor)
+  now = datetime.utcnow()
   symbol = data.symbol.upper()
-  name = data.name
-  current_price = data.current_price
-
-  if actor.mode == "far_customer":
-    dataset_info = dataset_service.get_symbol_info(symbol)
-    if not dataset_info:
-      raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Symbol not found in dataset",
-      )
-    if not name:
-      name = dataset_info.get("name") or dataset_info.get("symbol") or symbol
-    if current_price is None:
-      price = dataset_service.get_latest_price_for_symbol(symbol)
-      if price is None:
-        raise HTTPException(
-          status_code=status.HTTP_400_BAD_REQUEST,
-          detail="Latest price not available for symbol",
-        )
-      current_price = price
-
-  item = PortfolioItem(
-    owner_type=owner["owner_type"],
-    owner_key=owner["owner_key"],
-    symbol=symbol,
-    name=name,
-    shares=data.shares,
-    buy_price=data.buy_price,
-    buy_date=data.buy_date,
-    current_price=current_price,
-  )
-  db.add(item)
-  db.commit()
-  db.refresh(item)
-  return item
+  payload = {
+    "owner_type": "app",
+    "owner_key": actor.id,
+    "symbol": symbol,
+    "name": data.name or symbol,
+    "shares": float(data.shares),
+    "buy_price": float(data.buy_price),
+    "buy_date": data.buy_date.isoformat() if data.buy_date else None,
+    "current_price": data.current_price,
+    "created_at": now,
+    "updated_at": now,
+    "total_buy_value": float(data.shares * data.buy_price),
+    "synthetic": False,
+    "last_seen_price": data.current_price,
+    "last_seen_date": (data.buy_date.isoformat() if data.buy_date else None),
+  }
+  doc_ref = collection.document()
+  doc_ref.set(payload)
+  return _deserialize_firestore_item(doc_ref.id, payload)
 
 
-def _get_owned_item(db: Session, actor, item_id: int) -> PortfolioItem:
-    owner = _owner_fields(actor)
-    item = db.get(PortfolioItem, item_id)
-    if not item:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Portfolio item not found",
-        )
-    if (item.owner_type != owner["owner_type"] or item.owner_key != owner["owner_key"]):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Portfolio item not found",
-        )
-    return item
+def update_portfolio_item(actor, item_id: str, data: PortfolioItemUpdate):
+  doc_ref, existing = _get_firestore_item(actor, item_id)
+  updates = data.model_dump(exclude_unset=True)
+  if not updates:
+    return _deserialize_firestore_item(doc_ref.id, existing)
+
+  processed: Dict[str, object] = {}
+  for field, value in updates.items():
+    if field == "buy_date" and value is not None:
+      processed[field] = value.isoformat()
+    else:
+      processed[field] = value
+  processed["updated_at"] = datetime.utcnow()
+  if "shares" in processed or "buy_price" in processed:
+    shares = float(processed.get("shares", existing.get("shares", 0)))
+    price = float(processed.get("buy_price", existing.get("buy_price", 0)))
+    processed["total_buy_value"] = shares * price
+
+  doc_ref.update(processed)
+  existing.update(processed)
+  return _deserialize_firestore_item(doc_ref.id, existing)
 
 
-def update_portfolio_item(db: Session, actor, item_id: int, data: PortfolioItemUpdate) -> PortfolioItem:
-  item = _get_owned_item(db, actor, item_id)
-
-  for field, value in data.dict(exclude_unset=True).items():
-    setattr(item, field, value)
-
-  db.commit()
-  db.refresh(item)
-  return item
-
-
-def delete_portfolio_item(db: Session, actor, item_id: int) -> None:
-  item = _get_owned_item(db, actor, item_id)
-  db.delete(item)
-  db.commit()
+def delete_portfolio_item(actor, item_id: str) -> None:
+  doc_ref, _ = _get_firestore_item(actor, item_id)
+  doc_ref.delete()
