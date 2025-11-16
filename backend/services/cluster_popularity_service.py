@@ -158,14 +158,10 @@ def get_top_assets_for_cluster(cluster_id: int, existing_portfolio, top_k: int =
     score_max = max(score_values) if score_values else 0.0
 
     recs = []
-    rank = 0
     for asset in candidates:
         symbol = asset["symbol"]
         if symbol.upper() in existing_set:
             continue
-        rank += 1
-        if rank > top_k:
-            break
 
         asset_info = _get_asset_display_info(symbol)
         display_name = (
@@ -186,4 +182,21 @@ def get_top_assets_for_cluster(cluster_id: int, existing_portfolio, top_k: int =
             round(sharpe_value, 3) if sharpe_value is not None else 0.0,
         ])
 
-    return recs
+        if len(recs) >= top_k:
+            break
+
+    if not recs:
+        return recs
+
+    # Sort by Sharpe (desc), fallback to similarity if Sharpe ties or missing
+    recs.sort(
+        key=lambda entry: (
+            entry[3]
+            if isinstance(entry[3], (int, float)) and math.isfinite(entry[3])
+            else float("-inf"),
+            entry[2],
+        ),
+        reverse=True,
+    )
+
+    return recs[:top_k]

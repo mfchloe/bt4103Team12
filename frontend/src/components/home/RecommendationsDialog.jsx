@@ -72,6 +72,26 @@ const RecommendationsDialog = ({
     );
   }, [transformedRecommendations, currentPortfolio]);
 
+  const sortedRecommendations = useMemo(() => {
+    const sharpeValue = (value) =>
+      typeof value === "number" && Number.isFinite(value)
+        ? value
+        : Number.NEGATIVE_INFINITY;
+    return [...filteredRecommendations].sort((a, b) => {
+      const sharpeDiff = sharpeValue(b.sharpeRatio) - sharpeValue(a.sharpeRatio);
+      if (sharpeDiff !== 0) return sharpeDiff;
+      const simA =
+        typeof a.similarityScore === "number" && Number.isFinite(a.similarityScore)
+          ? a.similarityScore
+          : 0;
+      const simB =
+        typeof b.similarityScore === "number" && Number.isFinite(b.similarityScore)
+          ? b.similarityScore
+          : 0;
+      return simB - simA;
+    });
+  }, [filteredRecommendations]);
+
   const handleShareChange = (symbol, value) => {
     const key = normalizeKey(symbol);
     if (!/^\d*$/.test(value)) return;
@@ -111,7 +131,7 @@ const RecommendationsDialog = ({
     if (symbolsToAdd.length === 0) return;
 
     for (const symbol of symbolsToAdd) {
-      const stock = filteredRecommendations.find(
+      const stock = sortedRecommendations.find(
         (s) => normalizeKey(s.symbol) === symbol
       );
       if (stock) {
@@ -167,10 +187,10 @@ const RecommendationsDialog = ({
 
     const universe =
       selectedStocks.size > 0
-        ? filteredRecommendations.filter((rec) =>
+        ? sortedRecommendations.filter((rec) =>
             selectedStocks.has(normalizeKey(rec.symbol))
           )
-        : filteredRecommendations;
+        : sortedRecommendations;
 
     if (universe.length === 0) {
       setAllocationError("Select at least one recommendation to optimise.");
@@ -338,7 +358,7 @@ const RecommendationsDialog = ({
                     disabled={
                       allocating ||
                       loading ||
-                      filteredRecommendations.length === 0
+                      sortedRecommendations.length === 0
                     }
                   >
                     {allocating ? (
@@ -375,14 +395,14 @@ const RecommendationsDialog = ({
               <Typography color="error" align="center">
                 {error?.message || "Failed to fetch recommendations"}
               </Typography>
-            ) : filteredRecommendations.length === 0 ? (
+            ) : sortedRecommendations.length === 0 ? (
               <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
                 {recommendations?.length > 0
                   ? "All recommended assets are already in your portfolio!"
                   : "No recommendations available at this time."}
               </Typography>
             ) : (
-              filteredRecommendations.map((stock, index) => {
+              sortedRecommendations.map((stock, index) => {
                 const key = normalizeKey(stock.symbol);
                 const selected = selectedStocks.has(key);
                 return (
