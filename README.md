@@ -54,7 +54,7 @@ Watch our demo video to see the key features and workflow:
    cd backend
 ```
 
-2. Download the datasets folder (`datasets.zip`) and extract it into the backend folder. The folder structure should be:
+2. Download the datasets folder here ([`datasets.zip`](https://drive.google.com/uc?export=download&id=19LH_mcoqJzXPLJM0f-g2glhNUINl6Ae4)) and extract it into the backend folder. The folder structure should be:
 ```
    backend/
    └── datasets/
